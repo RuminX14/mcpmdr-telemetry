@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MCPMDR — System Telemetrii Radiosond</title>
+  <meta name="color-scheme" content="dark" />
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+  <!-- App CSS -->
+  <link rel="stylesheet" href="/assets/style.css" />
+</head>
+<body>
+  <!-- Login Overlay -->
+  <div id="login-overlay" class="overlay show" aria-modal="true" role="dialog">
+    <div class="overlay-panel glass">
+      <h1 data-i18n="login_title">SYSTEM TELEMETRII RADIOSOND METEOROLOGICZNYCH</h1>
+      <p class="brand-sub" data-i18n="brand_sub">Dostęp chroniony hasłem</p>
+      <label for="password" data-i18n="login_password_label">Hasło</label>
+      <input id="password" type="password" autocomplete="current-password" spellcheck="false" />
+      <button id="login-btn" class="btn" data-i18n="login_button">Zaloguj</button>
+      <p id="login-error" class="error"></p>
+    </div>
+  </div>
+
+  <!-- App Root -->
+  <div id="app" class="app hidden">
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">◎</span>
+        <span class="brand-text">MCPMDR</span>
+      </div>
+
+      <div class="source-toggle">
+        <label class="switch">
+          <input type="radio" name="source" value="ttgo" id="src-ttgo" />
+          <span data-i18n="source_ttgo">TTGO</span>
+        </label>
+        <label class="switch">
+          <input type="radio" name="source" value="radiosondy" id="src-radiosondy" checked />
+          <span data-i18n="source_radiosondy">radiosondy.info</span>
+        </label>
+      </div>
+
+      <div id="ttgo-url-wrap" class="topbar-group hidden">
+        <label for="ttgo-url" data-i18n="ttgo_url_label">URL TTGO</label>
+        <input id="ttgo-url" type="url" placeholder="http://192.168.0.50/sondes.json" value="http://192.168.0.50/sondes.json" />
+      </div>
+
+      <div id="radiosondy-search" class="topbar-group">
+        <label for="sonde-id" data-i18n="sonde_id_label">ID sondy</label>
+        <input id="sonde-id" type="text" placeholder="np. RS41" />
+        <button id="btn-search" class="btn" data-i18n="btn_search">Szukaj</button>
+        <button id="btn-show-all" class="btn ghost" data-i18n="btn_show_all">Wszystkie</button>
+      </div>
+
+      <div class="lang">
+        <button class="btn ghost" data-lang="pl">PL</button>
+        <button class="btn ghost" data-lang="en">EN</button>
+      </div>
+    </header>
+
+    <!-- View Tabs -->
+    <nav class="views">
+      <button class="tab active" data-view="telemetry">Telemetria</button>
+      <button class="tab" data-view="charts" data-i18n="charts_title">Dane graficzne</button>
+      <span id="status-line" class="status-line"></span>
+    </nav>
+
+    <!-- Telemetry View -->
+    <section id="view-telemetry" class="view telemetry show">
+      <div id="map"></div>
+      <aside id="sidepanel">
+        <div id="sonde-tabs" class="sonde-tabs"></div>
+        <div id="sonde-panel" class="sonde-panel">
+          <!-- dynamic attributes here -->
+        </div>
+      </aside>
+    </section>
+
+    <!-- Charts View -->
+    <section id="view-charts" class="view charts">
+      <div class="charts-grid">
+        <div class="card"><div class="card-head"><span>T [°C] vs h [m]</span><button class="btn-icon fullscreen-toggle" title="Pełny ekran">⤢</button></div><canvas id="chart-temp"></canvas></div>
+        <div class="card"><div class="card-head"><span>p [hPa] vs h [m]</span><button class="btn-icon fullscreen-toggle" title="Pełny ekran">⤢</button></div><canvas id="chart-pres"></canvas></div>
+        <div class="card"><div class="card-head"><span>RH [%] vs h [m]</span><button class="btn-icon fullscreen-toggle" title="Pełny ekran">⤢</button></div><canvas id="chart-rh"></canvas></div>
+        <div class="card"><div class="card-head"><span>Td [°C] vs h [m]</span><button class="btn-icon fullscreen-toggle" title="Pełny ekran">⤢</button></div><canvas id="chart-td"></canvas></div>
+        <div class="card"><div class="card-head"><span>v_wind [m/s] vs h [m]</span><button class="btn-icon fullscreen-toggle" title="Pełny ekran">⤢</button></div><canvas id="chart-ws"></canvas></div>
+        <div class="card"><div class="card-head"><span>d_RX [m] vs h [m]</span><button class="btn-icon fullscreen-toggle" title="Pełny ekran">⤢</button></div><canvas id="chart-dr"></canvas></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Chart.js UMD -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- App JS -->
+  <script src="/assets/app.js"></script>
+</body>
+</html>
