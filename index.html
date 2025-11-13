@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="/assets/style.css" />
 </head>
 <body>
-  <!-- Login Overlay -->
+  <!-- Login Overlay (nie zmieniamy mechaniki) -->
   <div id="login-overlay" class="overlay show" aria-modal="true" role="dialog">
     <div class="overlay-panel glass">
       <h1 data-i18n="login_title">SYSTEM TELEMETRII RADIOSOND METEOROLOGICZNYCH</h1>
@@ -32,22 +32,24 @@
         <span class="brand-text">MCPMDR</span>
       </div>
 
-      <div class="source-toggle">
-        <label class="switch">
-          <input type="radio" name="source" value="ttgo" id="src-ttgo" />
-          <span data-i18n="source_ttgo">TTGO</span>
-        </label>
-        <label class="switch">
-          <input type="radio" name="source" value="radiosondy" id="src-radiosondy" checked />
-          <span data-i18n="source_radiosondy">radiosondy.info</span>
-        </label>
+      <!-- Wyraźny przełącznik źródła danych -->
+      <div class="segmented" role="tablist" aria-label="Źródło danych">
+        <button id="seg-ttgo" class="seg" data-src="ttgo">TTGO</button>
+        <button id="seg-radiosondy" class="seg active" data-src="radiosondy">radiosondy.info</button>
       </div>
 
+      <!-- Ustawienia TTGO (tylko w trybie TTGO) -->
       <div id="ttgo-url-wrap" class="topbar-group hidden">
         <label for="ttgo-url" data-i18n="ttgo_url_label">URL TTGO</label>
-        <input id="ttgo-url" type="url" placeholder="http://192.168.0.50/sondes.json" value="http://192.168.0.50/sondes.json" />
+        <input
+          id="ttgo-url"
+          type="url"
+          placeholder="http://192.168.0.50/sondes.json"
+          value="http://192.168.0.50/sondes.json"
+        />
       </div>
 
+      <!-- Szukanie sondy z radiosondy.info (tylko w tym trybie) -->
       <div id="radiosondy-search" class="topbar-group">
         <label for="sonde-id" data-i18n="sonde_id_label">ID sondy</label>
         <input id="sonde-id" type="text" placeholder="np. RS41" />
@@ -55,39 +57,69 @@
         <button id="btn-show-all" class="btn ghost" data-i18n="btn_show_all">Wszystkie</button>
       </div>
 
+      <!-- Język (działa jak wcześniej) -->
       <div class="lang">
         <button class="btn ghost" data-lang="pl">PL</button>
         <button class="btn ghost" data-lang="en">EN</button>
       </div>
     </header>
 
-    <!-- View Tabs -->
+    <!-- Zakładki widoków -->
     <nav class="views">
       <button class="tab active" data-view="telemetry">Telemetria</button>
       <button class="tab" data-view="charts" data-i18n="charts_title">Dane graficzne</button>
       <span id="status-line" class="status-line"></span>
     </nav>
 
-    <!-- Telemetry View -->
-    <section id="view-telemetry" class="view telemetry show">
-      <div id="map"></div>
-      <aside id="sidepanel">
+    <!-- Widok Telemetria: mapa + panel danych, bez scrolla strony -->
+    <section id="view-telemetry" class="view telemetry show" aria-label="Widok telemetrii">
+      <div id="map" aria-label="Mapa"></div>
+      <aside id="sidepanel" aria-label="Panel danych">
         <div id="sonde-tabs" class="sonde-tabs"></div>
         <div id="sonde-panel" class="sonde-panel">
-          <!-- dynamic attributes here -->
+          <!-- dane sond generuje app.js -->
         </div>
       </aside>
     </section>
 
-    <!-- Charts View -->
-    <section id="view-charts" class="view charts">
+    <!-- Widok Dane graficzne: zajmuje całą przestrzeń roboczą -->
+    <section id="view-charts" class="view charts" aria-label="Dane graficzne">
       <div class="charts-grid">
-        <div class="card"><div class="card-head"><span>T [°C] vs h [m]</span><button class="btn-icon fullscreen-toggle" title="Pełny ekran">⤢</button></div><canvas id="chart-temp"></canvas></div>
-        <div class="card"><div class="card-head"><span>p [hPa] vs h [m]</span><button class="btn-icon fullscreen-toggle" title="Pełny ekran">⤢</button></div><canvas id="chart-pres"></canvas></div>
-        <div class="card"><div class="card-head"><span>RH [%] vs h [m]</span><button class="btn-icon fullscreen-toggle" title="Pełny ekran">⤢</button></div><canvas id="chart-rh"></canvas></div>
-        <div class="card"><div class="card-head"><span>Td [°C] vs h [m]</span><button class="btn-icon fullscreen-toggle" title="Pełny ekran">⤢</button></div><canvas id="chart-td"></canvas></div>
-        <div class="card"><div class="card-head"><span>v_wind [m/s] vs h [m]</span><button class="btn-icon fullscreen-toggle" title="Pełny ekran">⤢</button></div><canvas id="chart-ws"></canvas></div>
-        <div class="card"><div class="card-head"><span>d_RX [m] vs h [m]</span><button class="btn-icon fullscreen-toggle" title="Pełny ekran">⤢</button></div><canvas id="chart-dr"></canvas></div>
+        <!-- 1) Voltages vs Temperature -->
+        <div class="card chart-card">
+          <div class="card-head">
+            <span>Voltages vs Temperature</span>
+            <button class="btn-icon fullscreen-toggle" title="Pełny ekran">⤢</button>
+          </div>
+          <canvas id="chart-volt-temp"></canvas>
+        </div>
+
+        <!-- 2) GNSS Satellites in Use -->
+        <div class="card chart-card">
+          <div class="card-head">
+            <span>GNSS Satellites in Use</span>
+            <button class="btn-icon fullscreen-toggle" title="Pełny ekran">⤢</button>
+          </div>
+          <canvas id="chart-gnss"></canvas>
+        </div>
+
+        <!-- 3) Payload Environmental Sensor Data -->
+        <div class="card chart-card">
+          <div class="card-head">
+            <span>Payload Environmental Sensor Data</span>
+            <button class="btn-icon fullscreen-toggle" title="Pełny ekran">⤢</button>
+          </div>
+          <canvas id="chart-env"></canvas>
+        </div>
+
+        <!-- 4) Reported Horizontal Velocity -->
+        <div class="card chart-card">
+          <div class="card-head">
+            <span>Reported Horizontal Velocity</span>
+            <button class="btn-icon fullscreen-toggle" title="Pełny ekran">⤢</button>
+          </div>
+          <canvas id="chart-hvel"></canvas>
+        </div>
       </div>
     </section>
   </div>
