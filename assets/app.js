@@ -97,7 +97,7 @@
     const y = Math.sin(toRad(lon2 - lon1)) * Math.cos(toRad(lat2));
     const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
       Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lon2 - lon1));
-    let brng = toDeg(Math.atan2(y, x));
+    let brng = Math.atan2(y, x) * 180 / Math.PI;
     return (brng + 360) % 360;
   }
 
@@ -271,7 +271,7 @@
     window.addEventListener('resize', () => setTimeout(kick, 120));
   }
 
-  // ======= UI =======
+  // ======= UI =======  
   function initUI() {
     applyTranslations();
 
@@ -375,7 +375,7 @@
     render();
   }
 
-  // ======= TTGO (szkielet) =======
+  // ======= TTGO (szkielet) =======  
   async function fetchTTGO() {
     const url = ($('#ttgo-url').value || '').trim() || 'http://192.168.0.50/sondes.json';
     if (location.protocol === 'https:' && url.startsWith('http:')) {
@@ -397,7 +397,7 @@
     }
   }
 
-  // ======= radiosondy.info przez /api/radiosondy =======
+  // ======= radiosondy.info przez /api/radiosondy =======  
   async function fetchRadiosondy() {
     const q = state.filterId
       ? `/api/radiosondy?mode=single&id=${encodeURIComponent(state.filterId)}`
@@ -746,7 +746,7 @@
     if (state.activeId === id) state.activeId = null;
   }
 
-  // ======= Renderowanie UI =======
+  // ======= Renderowanie UI =======  
   function render() {
     renderTabs();
     renderPanel();
@@ -1145,6 +1145,144 @@
       chart.update('none');
     })();
 
+    // 4b) Profil wiatru – prędkość i kierunek vs wysokość (wznoszenie / opadanie)
+    (function () {
+      const id = 'chart-wind-profile';
+      const chart = ensureChart(id, () => ({
+        type: 'scatter',
+        data: {
+          datasets: [
+            {
+              label: 'v_h [m/s] (wznoszenie)',
+              xAxisID: 'xSpd',
+              yAxisID: 'y',
+              data: [],
+              showLine: true,
+              pointRadius: 2,
+              borderWidth: 1.2
+            },
+            {
+              label: 'v_h [m/s] (opadanie)',
+              xAxisID: 'xSpd',
+              yAxisID: 'y',
+              data: [],
+              showLine: true,
+              pointRadius: 2,
+              borderWidth: 1.2,
+              borderDash: [4, 3]
+            },
+            {
+              label: 'kierunek [°] (wznoszenie)',
+              xAxisID: 'xDir',
+              yAxisID: 'y',
+              data: [],
+              showLine: false,
+              pointRadius: 2,
+              borderWidth: 1.2
+            },
+            {
+              label: 'kierunek [°] (opadanie)',
+              xAxisID: 'xDir',
+              yAxisID: 'y',
+              data: [],
+              showLine: false,
+              pointRadius: 2,
+              borderWidth: 1.2,
+              borderDash: [4, 3]
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          parsing: false,
+          scales: {
+            xSpd: {
+              type: 'linear',
+              position: 'bottom',
+              title: { display: true, text: 'Prędkość wiatru v_h [m/s]', color: '#e6ebff' },
+              grid: { color: 'rgba(134,144,176,.35)' },
+              ticks: { color: '#e6ebff' }
+            },
+            xDir: {
+              type: 'linear',
+              position: 'top',
+              min: 0,
+              max: 360,
+              title: { display: true, text: 'Kierunek wiatru [°]', color: '#e6ebff' },
+              grid: { display: false },
+              ticks: { color: '#e6ebff' }
+            },
+            y: commonY('Wysokość [m]')
+          },
+          plugins: {
+            tooltip: tooltipWithAltitude(),
+            legend: { labels: { color: '#e6ebff' } }
+          }
+        }
+      }));
+      if (!chart) return;
+
+      const speedUp = [];
+      const speedDown = [];
+      const dirUp = [];
+      const dirDown = [];
+
+      if (s && s.history.length >= 2) {
+        const ordered = s.history.slice().sort((a, b) => a.time - b.time);
+
+        // znajdź indeks maksimum wysokości (apex)
+        let apexIndex = -1;
+        let maxAlt = -Infinity;
+        for (let i = 0; i < ordered.length; i++) {
+          const z = ordered[i].alt;
+          if (Number.isFinite(z) && z > maxAlt) {
+            maxAlt = z;
+            apexIndex = i;
+          }
+        }
+
+        for (let i = 1; i < ordered.length; i++) {
+          const a = ordered[i - 1];
+          const b = ordered[i];
+
+          if (!Number.isFinite(a.lat) || !Number.isFinite(a.lon) ||
+              !Number.isFinite(b.lat) || !Number.isFinite(b.lon) ||
+              !Number.isFinite(b.alt)) {
+            continue;
+          }
+
+          const dt = (b.time - a.time) / 1000;
+          if (dt <= 0) continue;
+
+          const dH = haversine(a.lat, a.lon, b.lat, b.lon);
+          const v = dH / dt;
+          const dir = bearing(a.lat, a.lon, b.lat, b.lon);
+
+          if (!Number.isFinite(v) || !Number.isFinite(dir)) continue;
+
+          const isAscent = (apexIndex === -1) ? true : (i <= apexIndex);
+          const pSpeed = { x: v, y: b.alt, alt: b.alt };
+          const pDir = { x: dir, y: b.alt, alt: b.alt };
+
+          if (isAscent) {
+            speedUp.push(pSpeed);
+            dirUp.push(pDir);
+          } else {
+            speedDown.push(pSpeed);
+            dirDown.push(pDir);
+          }
+        }
+      }
+
+      chart.data.datasets[0].data = speedUp;
+      chart.data.datasets[1].data = speedDown;
+      chart.data.datasets[2].data = dirUp;
+      chart.data.datasets[3].data = dirDown;
+      chart.update('none');
+    })();
+
     // 5) Gęstość powietrza vs wysokość
     (function () {
       const id = 'chart-density';
@@ -1262,7 +1400,7 @@
     updateStabilityBox(s);
   }
 
-  // ======= Wskaźnik stabilności – karta z paskiem =======
+  // ======= Wskaźnik stabilności – karta z paskiem =======  
   function updateStabilityBox(s) {
     const canvas = document.getElementById('chart-stability');
     if (!canvas) return;
@@ -1329,7 +1467,7 @@
     `;
   }
 
-  // ======= Boot =======
+  // ======= Boot =======  
   window.addEventListener('DOMContentLoaded', () => {
     initLogin();
     initMap();
@@ -1337,3 +1475,4 @@
     restartFetching();
   });
 })();
+
