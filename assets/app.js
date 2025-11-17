@@ -1,28 +1,31 @@
 (() => {
   'use strict';
 
+  // ======= Stałe & stan =======
   const PASSWORD = 'MCPMDR';
-  const RX = { lat: 54.546, lon: 18.5501 };
-  const ACTIVE_TIMEOUT_SEC = 900;
-  const VISIBILITY_WINDOW_SEC = 3600;
-  const HISTORY_LIMIT = 600;
+  const RX = { lat: 54.546, lon: 18.5501 }; // Gdynia Oksywie
+  const ACTIVE_TIMEOUT_SEC = 900;   // 15 min bez nowych danych → "zakończona"
+  const VISIBILITY_WINDOW_SEC = 3600; // 1 h po zakończeniu → ukryj
+  const HISTORY_LIMIT = 600;        // ok. 50 min przy 5 s
 
   const state = {
-    source: 'radiosondy',
+    source: 'radiosondy',   // 'ttgo' | 'radiosondy'
     filterId: '',
     fetchTimer: null,
     map: null,
     layers: {},
     rxMarker: null,
-    sondes: new Map(),
+    sondes: new Map(),      // id -> sonde object
     activeId: null,
     charts: {},
     lang: localStorage.getItem('lang') || 'pl',
+    // mini-mapa w zakładce wykresów
     miniMap: null,
     miniPolyline: null,
     miniMarker: null
   };
 
+  // ======= i18n =======
   const translations = {
     pl: {
       login_title: 'SYSTEM TELEMETRII RADIOSOND METEOROLOGICZNYCH',
@@ -56,15 +59,6 @@
     }
   };
 
-  const $ = sel => document.querySelector(sel);
-  const $$ = sel => Array.from(document.querySelectorAll(sel));
-  const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
-  const fmt = (v, d = 0) => Number.isFinite(v) ? v.toFixed(d) : '—';
-  const pickFirstFinite = (...vals) => {
-    for (const v of vals) if (Number.isFinite(v)) return v;
-    return null;
-  };
-
   function applyTranslations() {
     const t = translations[state.lang] || translations.pl;
     document.querySelectorAll('[data-i18n]').forEach(el => {
@@ -72,6 +66,19 @@
       if (t[k]) el.textContent = t[k];
     });
   }
+
+  // ======= Helpery =======
+  const $ = sel => document.querySelector(sel);
+  const $$ = sel => Array.from(document.querySelectorAll(sel));
+  const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+  const fmt = (v, d = 0) => Number.isFinite(v) ? v.toFixed(d) : '—';
+
+  const pickFirstFinite = (...vals) => {
+    for (const v of vals) {
+      if (Number.isFinite(v)) return v;
+    }
+    return null;
+  };
 
   function haversine(lat1, lon1, lat2, lon2) {
     const R = 6371000;
@@ -129,6 +136,7 @@
     return null;
   }
 
+  // parsowanie pola Description z radiosondy.info
   function parseDescription(desc) {
     if (!desc) return {};
     const num = re => {
@@ -157,10 +165,10 @@
     for (let i = pts.length - maxSeg; i < pts.length; i++) {
       const a = pts[i - 1];
       const b = pts[i];
-      const dz = (b.alt - a.alt) / 1000;
+      const dz = (b.alt - a.alt) / 1000; // km
       if (dz <= 0.05) continue;
       const dT = b.temp - a.temp;
-      const gamma = -dT / dz;
+      const gamma = -dT / dz; // K/km
       if (Number.isFinite(gamma)) {
         sum += gamma;
         count++;
@@ -180,6 +188,7 @@
     return { gamma: g, cls };
   }
 
+  // ======= Login =======
   function initLogin() {
     const overlay = $('#login-overlay');
     if (sessionStorage.getItem('mcpmdr_logged_in') === 'true') {
@@ -204,6 +213,7 @@
     });
   }
 
+  // ======= Mapa główna =======
   function initMap() {
     const map = L.map('map', { zoomControl: true });
     state.map = map;
@@ -261,9 +271,11 @@
     window.addEventListener('resize', () => setTimeout(kick, 120));
   }
 
+  // ======= UI =======
   function initUI() {
     applyTranslations();
 
+    // Język
     $$('.lang .btn').forEach(b => {
       b.addEventListener('click', () => {
         state.lang = b.dataset.lang;
@@ -272,6 +284,7 @@
       });
     });
 
+    // Zakładki widoków
     $$('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         $$('.tab').forEach(t => t.classList.remove('active'));
@@ -289,6 +302,7 @@
       });
     });
 
+    // Źródło danych
     const segTTGO = $('#seg-ttgo');
     const segR = $('#seg-radiosondy');
     function setSourceSegment(activeBtn) {
@@ -301,6 +315,7 @@
     segTTGO.addEventListener('click', () => setSourceSegment(segTTGO));
     segR.addEventListener('click', () => setSourceSegment(segR));
 
+    // Szukaj / wszystkie (radiosondy.info)
     $('#btn-search').addEventListener('click', () => {
       state.filterId = ($('#sonde-id').value || '').trim();
       restartFetching();
@@ -311,6 +326,7 @@
       restartFetching();
     });
 
+    // Fullscreen wykresów / mini-mapy – ten sam przycisk włącza/wyłącza
     $$('.fullscreen-toggle').forEach(btn => {
       btn.addEventListener('click', () => {
         const card = btn.closest('.card');
@@ -319,6 +335,7 @@
       });
     });
 
+    // Zamknięcie fullscreen klawiszem ESC
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape') {
         const fs = document.querySelector('.card.fullscreen');
@@ -329,9 +346,17 @@
       }
     });
 
+    // Mini-mapa – oznacz kartę odpowiednimi klasami (do powiększenia i ustawienia jako pierwsza)
+    const miniCard = document.getElementById('mini-map')?.closest('.card');
+    if (miniCard) {
+      miniCard.classList.add('chart-card', 'mini-map-card');
+    }
+
+    // Początkowy widok
     $('#view-telemetry').classList.add('show');
   }
 
+  // ======= Harmonogram pobierania =======  
   function restartFetching() {
     if (state.fetchTimer) {
       clearInterval(state.fetchTimer);
@@ -350,6 +375,7 @@
     render();
   }
 
+  // ======= TTGO (szkielet) =======
   async function fetchTTGO() {
     const url = ($('#ttgo-url').value || '').trim() || 'http://192.168.0.50/sondes.json';
     if (location.protocol === 'https:' && url.startsWith('http:')) {
@@ -371,6 +397,7 @@
     }
   }
 
+  // ======= radiosondy.info przez /api/radiosondy =======
   async function fetchRadiosondy() {
     const q = state.filterId
       ? `/api/radiosondy?mode=single&id=${encodeURIComponent(state.filterId)}`
@@ -402,6 +429,7 @@
     $('#status-line').textContent = `Błąd pobierania danych. ${msg}`;
   }
 
+  // ======= CSV parsing =======  
   function parseAndMergeCSV(csv) {
     if (!csv) return;
     const lines = csv.split(/\r?\n/).filter(l => l.trim().length);
@@ -438,9 +466,10 @@
       desc: colIdx(['description', 'desc'])
     };
 
+    // Fallback dla typowego układu CSV
     if (idx.id === -1 && headers.length > 0) idx.id = 0;
     if (idx.type === -1 && headers.length > 1) idx.type = 1;
-    if (idx.time === -1 && headers.length > 2) idx.time = 3; // radiosondy.info CSV: StartPlace;DateTime;Latitude;Longitude;...
+    if (idx.time === -1 && headers.length > 2) idx.time = 3; // StartPlace;DateTime;Lat;Lon...
     if (idx.lat === -1 && headers.length > 4) idx.lat = 4;
     if (idx.lon === -1 && headers.length > 5) idx.lon = 5;
     if (idx.alt === -1 && headers.length > 7) idx.alt = 7;
@@ -552,6 +581,7 @@
 
   function mergePoint(s, p, extra) {
     s.type = extra.type || s.type;
+
     const meta = parseDescription(extra.description);
 
     const merged = {
@@ -662,6 +692,7 @@
     s.marker.bindTooltip(label, { direction: 'top', offset: [0, -8] });
   }
 
+  // Launch / Burst na trasie lotu (prosty: start + najwyższy punkt)
   function updateLaunchBurstMarkers(s) {
     if (!state.map || !s.history.length) return;
 
@@ -715,6 +746,7 @@
     if (state.activeId === id) state.activeId = null;
   }
 
+  // ======= Renderowanie UI =======
   function render() {
     renderTabs();
     renderPanel();
@@ -725,6 +757,7 @@
     const wrap = $('#sonde-tabs');
     wrap.innerHTML = '';
     const list = [...state.sondes.values()];
+
     list.sort((a, b) => (b.time || 0) - (a.time || 0));
 
     for (const s of list) {
@@ -780,6 +813,7 @@
       { label: 'LCL [m]', value: fmt(s.lclHeight, 0) },
       { label: 'θ [K]', value: fmt(s.theta, 1) },
       { label: 'Stabilność Γ [K/km]', value: fmt(s.stabilityIndex, 1) }
+      // wskaźnik stabilności graficzny w zakładce wykresów
     ];
 
     const stabilityTag = s.stabilityClass ? ` — ${s.stabilityClass}` : '';
@@ -803,6 +837,7 @@
     });
   }
 
+  // ======= Wykresy =======
   function ensureChart(id, builder) {
     if (state.charts[id]) return state.charts[id];
     const ctx = document.getElementById(id);
@@ -915,8 +950,10 @@
     const s = state.sondes.get(state.activeId);
     const hist = s ? s.history.slice().sort((a, b) => a.time - b.time) : [];
 
+    // mała mapa
     renderMiniMap(s, hist);
 
+    // 1) Temp vs czas
     (function () {
       const id = 'chart-volt-temp';
       const chart = ensureChart(id, () => ({
@@ -957,6 +994,7 @@
       chart.update('none');
     })();
 
+    // 2) GNSS Satellites in Use – placeholder
     (function () {
       const id = 'chart-gnss';
       const chart = ensureChart(id, () => ({
@@ -987,10 +1025,11 @@
         }
       }));
       if (!chart) return;
-      chart.data.datasets[0].data = [];
+      chart.data.datasets[0].data = []; // TTGO w przyszłości
       chart.update('none');
     })();
 
+    // 3) Payload Environmental Sensor Data – T / RH / p
     (function () {
       const id = 'chart-env';
       const chart = ensureChart(id, () => ({
@@ -1055,6 +1094,7 @@
       chart.update('none');
     })();
 
+    // 4) Horizontal Velocity – czasowo
     (function () {
       const id = 'chart-hvel';
       const chart = ensureChart(id, () => ({
@@ -1105,6 +1145,7 @@
       chart.update('none');
     })();
 
+    // 5) Gęstość powietrza vs wysokość
     (function () {
       const id = 'chart-density';
       const chart = ensureChart(id, () => ({
@@ -1142,7 +1183,7 @@
       }));
       if (!chart) return;
 
-      const R = 287;
+      const R = 287; // J/(kg*K)
       const densityData = hist
         .filter(h => Number.isFinite(h.pressure) && Number.isFinite(h.temp) && Number.isFinite(h.alt))
         .map(h => {
@@ -1156,6 +1197,7 @@
       chart.update('none');
     })();
 
+    // 6) Moc sygnału i napięcie vs temperatura
     (function () {
       const id = 'chart-signal-temp';
       const chart = ensureChart(id, () => ({
@@ -1216,56 +1258,78 @@
       chart.update('none');
     })();
 
-    (function () {
-      const id = 'chart-stability';
-      const chart = ensureChart(id, () => ({
-        type: 'scatter',
-        data: {
-          datasets: [
-            {
-              label: 'θ [K]',
-              data: [],
-              borderWidth: 1.2,
-              pointRadius: 3,
-              showLine: true
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          animation: false,
-          parsing: false,
-          scales: {
-            x: {
-              type: 'linear',
-              title: { display: true, text: 'θ [K]', color: '#e6ebff' },
-              grid: { color: 'rgba(134,144,176,.35)' },
-              ticks: { color: '#e6ebff' }
-            },
-            y: commonY('Wysokość [m]')
-          },
-          plugins: {
-            tooltip: tooltipWithAltitude(),
-            legend: { labels: { color: '#e6ebff' } }
-          }
-        }
-      }));
-      if (!chart) return;
-
-      const stabData = hist
-        .filter(h => Number.isFinite(h.temp) && Number.isFinite(h.pressure) && Number.isFinite(h.alt))
-        .map(h => {
-          const th = thetaK(h.temp, h.pressure);
-          return { x: th, y: h.alt, alt: h.alt };
-        })
-        .filter(pt => Number.isFinite(pt.x));
-
-      chart.data.datasets[0].data = stabData;
-      chart.update('none');
-    })();
+    // 7) Wskaźnik stabilności atmosfery – karta z paskiem zamiast wykresu
+    updateStabilityBox(s);
   }
 
+  // ======= Wskaźnik stabilności – karta z paskiem =======
+  function updateStabilityBox(s) {
+    const canvas = document.getElementById('chart-stability');
+    if (!canvas) return;
+    const card = canvas.closest('.card');
+    if (!card) return;
+
+    // chowamy sam canvas (nie chcemy wykresu)
+    canvas.style.display = 'none';
+
+    let box = card.querySelector('.stability-box');
+    if (!box) {
+      box = document.createElement('div');
+      box.className = 'stability-box';
+      const body = card.querySelector('.card-body') || card;
+      body.appendChild(box);
+    }
+
+    // brak aktywnej sondy lub brak danych
+    if (!s || !Number.isFinite(s.stabilityIndex)) {
+      box.className = 'stability-box';
+      box.innerHTML = `
+        <div class="stability-box-head">
+          <span class="gamma">Γ: —</span>
+          <span class="class-label">Brak danych</span>
+        </div>
+        <div class="stability-bar">
+          <div class="stability-bar-inner" style="width:0%"></div>
+        </div>
+        <div class="stability-legenda">
+          <span>silnie stabilna</span>
+          <span>obojętna</span>
+          <span>silnie chwiejna</span>
+        </div>
+      `;
+      return;
+    }
+
+    const gamma = s.stabilityIndex;     // K/km
+    const cls = s.stabilityClass || '—';
+
+    // mapujemy Γ na 0–100% (0…12 K/km)
+    const percent = Math.max(0, Math.min(100, (gamma / 12) * 100));
+
+    let stateClass = '';
+    if (gamma > 9.8) stateClass = 'stability--very-unstable';
+    else if (gamma > 7) stateClass = 'stability--unstable';
+    else if (gamma > 4) stateClass = 'stability--neutral';
+    else stateClass = 'stability--stable';
+
+    box.className = `stability-box ${stateClass}`;
+    box.innerHTML = `
+      <div class="stability-box-head">
+        <span class="gamma">Γ: ${gamma.toFixed(1)} K/km</span>
+        <span class="class-label">${cls}</span>
+      </div>
+      <div class="stability-bar">
+        <div class="stability-bar-inner" style="width:${percent}%"></div>
+      </div>
+      <div class="stability-legenda">
+        <span>silnie stabilna</span>
+        <span>obojętna</span>
+        <span>silnie chwiejna</span>
+      </div>
+    `;
+  }
+
+  // ======= Boot =======
   window.addEventListener('DOMContentLoaded', () => {
     initLogin();
     initMap();
