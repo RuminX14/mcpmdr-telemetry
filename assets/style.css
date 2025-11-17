@@ -598,3 +598,29 @@ body {
 .stability--stable .class-label {
   color: #3dd4ff;
 }
+/* --- FIX: więcej miejsca na wykresy w zakładce "Dane graficzne" --- */
+
+/* 2 kolumny na szerokich ekranach, rozsądna wysokość kart */
+.view-charts .charts-scroll {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  grid-auto-rows: minmax(260px, auto);
+}
+
+/* na węższych – jedna kolumna, żeby nic nie nachodziło */
+@media (max-width: 1100px) {
+  .view-charts .charts-scroll {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* każda karta z wykresem ma trochę więcej miejsca w pionie */
+.view-charts .card .card-body {
+  min-height: 220px;
+}
+
+/* fullscreen dalej działa normalnie */
+.view-charts .card.fullscreen .card-body {
+  min-height: 0;
+}
