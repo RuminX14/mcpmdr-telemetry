@@ -346,10 +346,10 @@
       }
     });
 
-    // Mini-mapa – tylko klasa chart-card, bez powiększania na całą szerokość
+    // Mini-mapa – oznacz kartę odpowiednimi klasami (do powiększenia i ustawienia jako pierwsza)
     const miniCard = document.getElementById('mini-map')?.closest('.card');
     if (miniCard) {
-      miniCard.classList.add('chart-card');
+      miniCard.classList.add('chart-card', 'mini-map-card');
     }
 
     // Początkowy widok
@@ -974,7 +974,6 @@
           maintainAspectRatio: false,
           animation: false,
           parsing: false,
-          layout: { padding: { top: 8, right: 8, bottom: 4, left: 8 } },
           scales: {
             x: timeScaleOptions('Czas'),
             yTemp: commonY('Temperatura [°C]')
@@ -1015,7 +1014,6 @@
           maintainAspectRatio: false,
           animation: false,
           parsing: false,
-          layout: { padding: { top: 8, right: 8, bottom: 4, left: 8 } },
           scales: {
             x: timeScaleOptions('Czas'),
             y: commonY('Liczba satelitów')
@@ -1066,7 +1064,6 @@
           maintainAspectRatio: false,
           animation: false,
           parsing: false,
-          layout: { padding: { top: 8, right: 8, bottom: 4, left: 8 } },
           scales: {
             x: timeScaleOptions('Czas'),
             yTemp: commonY('T [°C]'),
@@ -1117,7 +1114,6 @@
           maintainAspectRatio: false,
           animation: false,
           parsing: false,
-          layout: { padding: { top: 8, right: 8, bottom: 4, left: 8 } },
           scales: {
             x: timeScaleOptions('Czas'),
             y: commonY('v_h [m/s]')
@@ -1152,4 +1148,192 @@
     // 5) Gęstość powietrza vs wysokość
     (function () {
       const id = 'chart-density';
-      const chart = ensureChart(id,
+      const chart = ensureChart(id, () => ({
+        type: 'scatter',
+        data: {
+          datasets: [
+            {
+              label: 'Gęstość [kg/m³]',
+              data: [],
+              borderWidth: 1.2,
+              pointRadius: 3,
+              showLine: true
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          parsing: false,
+          scales: {
+            x: {
+              type: 'linear',
+              title: { display: true, text: 'Gęstość [kg/m³]', color: '#e6ebff' },
+              grid: { color: 'rgba(134,144,176,.35)' },
+              ticks: { color: '#e6ebff' }
+            },
+            y: commonY('Wysokość [m]')
+          },
+          plugins: {
+            tooltip: tooltipWithAltitude(),
+            legend: { labels: { color: '#e6ebff' } }
+          }
+        }
+      }));
+      if (!chart) return;
+
+      const R = 287; // J/(kg*K)
+      const densityData = hist
+        .filter(h => Number.isFinite(h.pressure) && Number.isFinite(h.temp) && Number.isFinite(h.alt))
+        .map(h => {
+          const pPa = h.pressure * 100;
+          const Tk = h.temp + 273.15;
+          const rho = pPa / (R * Tk);
+          return { x: rho, y: h.alt, alt: h.alt };
+        });
+
+      chart.data.datasets[0].data = densityData;
+      chart.update('none');
+    })();
+
+    // 6) Moc sygnału i napięcie vs temperatura
+    (function () {
+      const id = 'chart-signal-temp';
+      const chart = ensureChart(id, () => ({
+        type: 'scatter',
+        data: {
+          datasets: [
+            {
+              label: 'RSSI [dB]',
+              yAxisID: 'yRssi',
+              data: [],
+              borderWidth: 1.2,
+              pointRadius: 3,
+              showLine: false
+            },
+            {
+              label: 'Napięcie [V]',
+              yAxisID: 'yU',
+              data: [],
+              borderWidth: 1.2,
+              pointRadius: 3,
+              showLine: false
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          parsing: false,
+          scales: {
+            x: {
+              type: 'linear',
+              title: { display: true, text: 'Temperatura [°C]', color: '#e6ebff' },
+              grid: { color: 'rgba(134,144,176,.35)' },
+              ticks: { color: '#e6ebff' }
+            },
+            yRssi: commonY('RSSI [dB]'),
+            yU: { ...commonY('U [V]'), position: 'right' }
+          },
+          plugins: {
+            tooltip: tooltipWithAltitude(),
+            legend: { labels: { color: '#e6ebff' } }
+          }
+        }
+      }));
+      if (!chart) return;
+
+      const rssiData = hist
+        .filter(h => Number.isFinite(h.rssi) && Number.isFinite(h.temp))
+        .map(h => ({ x: h.temp, y: h.rssi, alt: h.alt }));
+
+      const uData = hist
+        .filter(h => Number.isFinite(h.battery) && Number.isFinite(h.temp))
+        .map(h => ({ x: h.temp, y: h.battery, alt: h.alt }));
+
+      chart.data.datasets[0].data = rssiData;
+      chart.data.datasets[1].data = uData;
+      chart.update('none');
+    })();
+
+    // 7) Wskaźnik stabilności atmosfery – karta z paskiem zamiast wykresu
+    updateStabilityBox(s);
+  }
+
+  // ======= Wskaźnik stabilności – karta z paskiem =======
+  function updateStabilityBox(s) {
+    const canvas = document.getElementById('chart-stability');
+    if (!canvas) return;
+    const card = canvas.closest('.card');
+    if (!card) return;
+
+    // chowamy sam canvas (nie chcemy wykresu)
+    canvas.style.display = 'none';
+
+    let box = card.querySelector('.stability-box');
+    if (!box) {
+      box = document.createElement('div');
+      box.className = 'stability-box';
+      const body = card.querySelector('.card-body') || card;
+      body.appendChild(box);
+    }
+
+    // brak aktywnej sondy lub brak danych
+    if (!s || !Number.isFinite(s.stabilityIndex)) {
+      box.className = 'stability-box';
+      box.innerHTML = `
+        <div class="stability-box-head">
+          <span class="gamma">Γ: —</span>
+          <span class="class-label">Brak danych</span>
+        </div>
+        <div class="stability-bar">
+          <div class="stability-bar-inner" style="width:0%"></div>
+        </div>
+        <div class="stability-legenda">
+          <span>silnie stabilna</span>
+          <span>obojętna</span>
+          <span>silnie chwiejna</span>
+        </div>
+      `;
+      return;
+    }
+
+    const gamma = s.stabilityIndex;     // K/km
+    const cls = s.stabilityClass || '—';
+
+    // mapujemy Γ na 0–100% (0…12 K/km)
+    const percent = Math.max(0, Math.min(100, (gamma / 12) * 100));
+
+    let stateClass = '';
+    if (gamma > 9.8) stateClass = 'stability--very-unstable';
+    else if (gamma > 7) stateClass = 'stability--unstable';
+    else if (gamma > 4) stateClass = 'stability--neutral';
+    else stateClass = 'stability--stable';
+
+    box.className = `stability-box ${stateClass}`;
+    box.innerHTML = `
+      <div class="stability-box-head">
+        <span class="gamma">Γ: ${gamma.toFixed(1)} K/km</span>
+        <span class="class-label">${cls}</span>
+      </div>
+      <div class="stability-bar">
+        <div class="stability-bar-inner" style="width:${percent}%"></div>
+      </div>
+      <div class="stability-legenda">
+        <span>silnie stabilna</span>
+        <span>obojętna</span>
+        <span>silnie chwiejna</span>
+      </div>
+    `;
+  }
+
+  // ======= Boot =======
+  window.addEventListener('DOMContentLoaded', () => {
+    initLogin();
+    initMap();
+    initUI();
+    restartFetching();
+  });
+})();
