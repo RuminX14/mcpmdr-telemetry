@@ -4,8 +4,8 @@
   // ======= Stałe & stan =======
   const PASSWORD = 'MCPMDR';
   const RX = { lat: 54.546, lon: 18.5501 }; // Gdynia Oksywie
-  const ACTIVE_TIMEOUT_SEC = 900;   // 15 min bez nowych danych → "zakończona"
-  const VISIBILITY_WINDOW_SEC = 3600; // 1 h po zakończeniu → ukryj
+  const ACTIVE_TIMEOUT_SEC = 900;      // 15 min bez nowych danych → "zakończona"
+  const VISIBILITY_WINDOW_SEC = 6 * 3600; // 6 h po zakończeniu → ukryj
   const HISTORY_LIMIT = 600;        // ok. 50 min przy 5 s
   const API_BASE = '';
   const state = {
@@ -495,7 +495,6 @@
     if (idx.alt === -1 && headers.length > 9) idx.alt = 9;
     if (idx.desc === -1 && headers.length > 10) idx.desc = 10;
 
-    const cutoff = Date.now() - VISIBILITY_WINDOW_SEC * 1000;
     let debugCount = 0;
 
     for (let li = 1; li < lines.length; li++) {
@@ -537,12 +536,6 @@
       if (!Number.isFinite(tms)) {
         if (debugCount < 5) {
           console.log('[radiosondy] skip row (bad time)', li, 'tRaw=', tRaw);
-        }
-        continue;
-      }
-      if (tms < cutoff) {
-        if (debugCount < 5) {
-          console.log('[radiosondy] skip row (too old)', li, 'time=', new Date(tms).toISOString());
         }
         continue;
       }
