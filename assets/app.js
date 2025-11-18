@@ -7,7 +7,7 @@
   const ACTIVE_TIMEOUT_SEC = 900;   // 15 min bez nowych danych → "zakończona"
   const VISIBILITY_WINDOW_SEC = 3600; // 1 h po zakończeniu → ukryj
   const HISTORY_LIMIT = 600;        // ok. 50 min przy 5 s
-  const API_BASE = ''; 
+  const API_BASE = '';
   const state = {
     source: 'radiosondy',   // 'ttgo' | 'radiosondy'
     filterId: '',
@@ -271,7 +271,7 @@
     window.addEventListener('resize', () => setTimeout(kick, 120));
   }
 
-  // ======= UI =======  
+  // ======= UI =======
   function initUI() {
     applyTranslations();
 
@@ -356,7 +356,7 @@
     $('#view-telemetry').classList.add('show');
   }
 
-  // ======= Harmonogram pobierania =======  
+  // ======= Harmonogram pobierania =======
   function restartFetching() {
     if (state.fetchTimer) {
       clearInterval(state.fetchTimer);
@@ -375,7 +375,7 @@
     render();
   }
 
-  // ======= TTGO (szkielet) =======  
+  // ======= TTGO (szkielet) =======
   async function fetchTTGO() {
     const url = ($('#ttgo-url').value || '').trim() || 'http://192.168.0.50/sondes.json';
     if (location.protocol === 'https:' && url.startsWith('http:')) {
@@ -397,7 +397,7 @@
     }
   }
 
-  // ======= radiosondy.info przez /api/radiosondy =======  
+  // ======= radiosondy.info przez /api/radiosondy =======
   async function fetchRadiosondy() {
     const path = state.filterId
       ? `/api/radiosondy?mode=single&id=${encodeURIComponent(state.filterId)}`
@@ -445,7 +445,7 @@
     $('#status-line').textContent = `Błąd pobierania danych. ${msg}`;
   }
 
-  // ======= CSV parsing =======  
+  // ======= CSV parsing =======
   function parseAndMergeCSV(csv) {
     if (!csv) return;
     const lines = csv.split(/\r?\n/).filter(l => l.trim().length);
@@ -496,44 +496,74 @@
     if (idx.desc === -1 && headers.length > 10) idx.desc = 10;
 
     const cutoff = Date.now() - VISIBILITY_WINDOW_SEC * 1000;
-
     let debugCount = 0;
 
     for (let li = 1; li < lines.length; li++) {
       const row = lines[li].split(sep);
+
       const rec = i => {
         if (i < 0) return '';
         const v = row[i];
         return v == null ? '' : String(v).trim();
       };
 
+      if (debugCount < 5) {
+        console.log('[radiosondy] row raw', li, row);
+      }
+
       const tRaw = rec(idx.time);
       let tms = NaN;
 
+      // 1) czysty timestamp (np. 1700300000)
       if (/^[0-9]+$/.test(tRaw)) {
-        // czysty timestamp
         const n = parseInt(tRaw, 10);
         tms = (tRaw.length < 11) ? n * 1000 : n;
-      } else if (tRaw) {
-        // próba parsowania standardowego
-        let parsed = Date.parse(tRaw);
-        // radiosondy.info: "2025-11-18 07:56:02"
-        if (!Number.isFinite(parsed) &&
-            /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(tRaw)) {
-          parsed = Date.parse(tRaw.replace(' ', 'T') + 'Z');
-        }
-        tms = parsed;
+      }
+      // 2) radiosondy.info: "2025-11-18 10:09:03"
+      else if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(tRaw)) {
+        const [datePart, timePart] = tRaw.split(' ');
+        const [Y, M, D] = datePart.split('-').map(Number);
+        const [h, m, s] = timePart.split(':').map(Number);
+        // tworzymy czas w strefie przeglądarki (lokalnej)
+        const d = new Date(Y, M - 1, D, h, m, s);
+        tms = d.getTime();
+      }
+      // 3) cokolwiek innego – ostatnia próba
+      else if (tRaw) {
+        const parsed = Date.parse(tRaw);
+        if (Number.isFinite(parsed)) tms = parsed;
       }
 
-      if (!Number.isFinite(tms) || tms < cutoff) continue;
+      if (!Number.isFinite(tms)) {
+        if (debugCount < 5) {
+          console.log('[radiosondy] skip row (bad time)', li, 'tRaw=', tRaw);
+        }
+        continue;
+      }
+      if (tms < cutoff) {
+        if (debugCount < 5) {
+          console.log('[radiosondy] skip row (too old)', li, 'time=', new Date(tms).toISOString());
+        }
+        continue;
+      }
 
       const lat = parseFloat(rec(idx.lat));
       const lon = parseFloat(rec(idx.lon));
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        if (debugCount < 5) {
+          console.log('[radiosondy] skip row (no lat/lon)', li, 'lat=', rec(idx.lat), 'lon=', rec(idx.lon));
+        }
+        continue;
+      }
 
       const id = rec(idx.id) || 'UNKNOWN';
       if (state.filterId &&
-        !id.toLowerCase().includes(state.filterId.toLowerCase())) continue;
+        !id.toLowerCase().includes(state.filterId.toLowerCase())) {
+        if (debugCount < 5) {
+          console.log('[radiosondy] skip row (filterId mismatch)', li, 'id=', id);
+        }
+        continue;
+      }
 
       const s = getOrCreateSonde(id);
       const point = {
@@ -556,17 +586,17 @@
         description: desc
       });
 
-      // diagnostyka – pokaż kilka pierwszych punktów
       if (debugCount < 5) {
-        console.log('[radiosondy] parsed point',
-          id,
-          new Date(tms).toISOString(),
+        console.log(
+          '[radiosondy] parsed point',
+          'id=', id,
+          'time=', point.time.toISOString(),
           'lat=', lat,
           'lon=', lon,
           'alt=', point.alt
         );
-        debugCount++;
       }
+      debugCount++;
     }
 
     const now = Date.now();
@@ -790,7 +820,7 @@
     if (state.activeId === id) state.activeId = null;
   }
 
-  // ======= Renderowanie UI =======  
+  // ======= Renderowanie UI =======
   function render() {
     renderTabs();
     renderPanel();
@@ -1444,7 +1474,7 @@
     updateStabilityBox(s);
   }
 
-  // ======= Wskaźnik stabilności – karta z paskiem =======  
+  // ======= Wskaźnik stabilności – karta z paskiem =======
   function updateStabilityBox(s) {
     const canvas = document.getElementById('chart-stability');
     if (!canvas) return;
@@ -1511,7 +1541,7 @@
     `;
   }
 
-  // ======= Boot =======  
+  // ======= Boot =======
   window.addEventListener('DOMContentLoaded', () => {
     initLogin();
     initMap();
