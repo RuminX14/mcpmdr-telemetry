@@ -398,7 +398,7 @@
   }
 
   // ======= radiosondy.info przez /api/radiosondy =======  
-    async function fetchRadiosondy() {
+  async function fetchRadiosondy() {
     const path = state.filterId
       ? `/api/radiosondy?mode=single&id=${encodeURIComponent(state.filterId)}`
       : '/api/radiosondy?mode=all';
@@ -445,7 +445,6 @@
     $('#status-line').textContent = `Błąd pobierania danych. ${msg}`;
   }
 
-
   // ======= CSV parsing =======  
   function parseAndMergeCSV(csv) {
     if (!csv) return;
@@ -454,6 +453,9 @@
 
     const sep = lines[0].includes(';') ? ';' : ',';
     const headers = lines[0].split(sep).map(h => h.trim().toLowerCase());
+
+    // diagnostyka nagłówków
+    console.log('[radiosondy] headers =', headers);
 
     function colIdx(names) {
       for (const name of names) {
@@ -483,16 +485,19 @@
       desc: colIdx(['description', 'desc'])
     };
 
-    // Fallback dla typowego układu CSV
+    // Fallback dla typowego układu CSV radiosondy.info:
+    // SONDE;Type;QRG;StartPlace;DateTime;Latitude;Longitude;Course;Speed;Altitude;Description;Status;Finder
     if (idx.id === -1 && headers.length > 0) idx.id = 0;
     if (idx.type === -1 && headers.length > 1) idx.type = 1;
-    if (idx.time === -1 && headers.length > 2) idx.time = 3; // StartPlace;DateTime;Lat;Lon...
-    if (idx.lat === -1 && headers.length > 4) idx.lat = 4;
-    if (idx.lon === -1 && headers.length > 5) idx.lon = 5;
-    if (idx.alt === -1 && headers.length > 7) idx.alt = 7;
+    if (idx.time === -1 && headers.length > 4) idx.time = 4;
+    if (idx.lat === -1 && headers.length > 5) idx.lat = 5;
+    if (idx.lon === -1 && headers.length > 6) idx.lon = 6;
+    if (idx.alt === -1 && headers.length > 9) idx.alt = 9;
     if (idx.desc === -1 && headers.length > 10) idx.desc = 10;
 
     const cutoff = Date.now() - VISIBILITY_WINDOW_SEC * 1000;
+
+    let debugCount = 0;
 
     for (let li = 1; li < lines.length; li++) {
       const row = lines[li].split(sep);
@@ -504,12 +509,22 @@
 
       const tRaw = rec(idx.time);
       let tms = NaN;
+
       if (/^[0-9]+$/.test(tRaw)) {
+        // czysty timestamp
         const n = parseInt(tRaw, 10);
         tms = (tRaw.length < 11) ? n * 1000 : n;
-      } else {
-        tms = Date.parse(tRaw);
+      } else if (tRaw) {
+        // próba parsowania standardowego
+        let parsed = Date.parse(tRaw);
+        // radiosondy.info: "2025-11-18 07:56:02"
+        if (!Number.isFinite(parsed) &&
+            /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(tRaw)) {
+          parsed = Date.parse(tRaw.replace(' ', 'T') + 'Z');
+        }
+        tms = parsed;
       }
+
       if (!Number.isFinite(tms) || tms < cutoff) continue;
 
       const lat = parseFloat(rec(idx.lat));
@@ -540,6 +555,18 @@
         rssi: toNum(rec(idx.rssi)),
         description: desc
       });
+
+      // diagnostyka – pokaż kilka pierwszych punktów
+      if (debugCount < 5) {
+        console.log('[radiosondy] parsed point',
+          id,
+          new Date(tms).toISOString(),
+          'lat=', lat,
+          'lon=', lon,
+          'alt=', point.alt
+        );
+        debugCount++;
+      }
     }
 
     const now = Date.now();
@@ -1492,4 +1519,3 @@
     restartFetching();
   });
 })();
-
