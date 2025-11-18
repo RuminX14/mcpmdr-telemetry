@@ -7,7 +7,7 @@
   const ACTIVE_TIMEOUT_SEC = 900;   // 15 min bez nowych danych → "zakończona"
   const VISIBILITY_WINDOW_SEC = 3600; // 1 h po zakończeniu → ukryj
   const HISTORY_LIMIT = 600;        // ok. 50 min przy 5 s
-
+  const API_BASE = ''; 
   const state = {
     source: 'radiosondy',   // 'ttgo' | 'radiosondy'
     filterId: '',
@@ -398,20 +398,34 @@
   }
 
   // ======= radiosondy.info przez /api/radiosondy =======  
-  async function fetchRadiosondy() {
-    const q = state.filterId
+    async function fetchRadiosondy() {
+    const path = state.filterId
       ? `/api/radiosondy?mode=single&id=${encodeURIComponent(state.filterId)}`
       : '/api/radiosondy?mode=all';
+
+    const q = (API_BASE || '') + path;   // jeśli API_BASE puste → względne, inaczej pełny URL
 
     let lastErr = null;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
+        console.log('[radiosondy] fetch try', attempt, 'URL =', q);
+
         const ctrl = new AbortController();
         const t = setTimeout(() => ctrl.abort(), 30000);
         const res = await fetch(q, { signal: ctrl.signal, cache: 'no-store' });
         clearTimeout(t);
-        if (!res.ok) throw new Error('HTTP ' + res.status);
+
+        console.log('[radiosondy] HTTP status =', res.status);
+
+        if (!res.ok) {
+          // 404 / 500 itd. – rzucamy opis
+          throw new Error('HTTP ' + res.status + ' przy zapytaniu ' + path);
+        }
+
         const csv = await res.text();
+        // mała diagnostyka: pokaż pierwsze ~200 znaków
+        console.log('[radiosondy] sample CSV =', csv.slice(0, 200));
+
         parseAndMergeCSV(csv);
 
         const visibleCount = [...state.sondes.values()].filter(s => s.time).length;
@@ -420,14 +434,17 @@
         return;
       } catch (err) {
         lastErr = err;
+        console.error('[radiosondy] błąd w próbie', attempt, err);
         await new Promise(r => setTimeout(r, 1200 * attempt));
       }
     }
+
     const msg = (lastErr && lastErr.name === 'AbortError')
       ? '(Przekroczony czas odpowiedzi radiosondy.info)'
       : String(lastErr);
     $('#status-line').textContent = `Błąd pobierania danych. ${msg}`;
   }
+
 
   // ======= CSV parsing =======  
   function parseAndMergeCSV(csv) {
