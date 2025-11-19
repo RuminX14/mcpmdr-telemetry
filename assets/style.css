@@ -279,6 +279,7 @@ body {
   grid-template-columns: minmax(0, 1.6fr) minmax(280px, min(30vw, 460px));
   gap: 16px;
   padding: 8px 16px 16px;
+  min-height: 0; /* ważne dla scrolli w prawej kolumnie */
 }
 
 .map {
@@ -291,40 +292,39 @@ body {
 
 .side-panel {
   height: 100%;
+  min-height: 0;        /* żeby wewnętrzny grid mógł się kurczyć */
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-/* karta z listą sond (przewijane okienko) */
-.sonde-list-card {
-  flex: 0 0 auto;
-  max-height: 170px;
-  display: flex;
-  flex-direction: column;
-}
+/* Pasek z aktywnymi sondami – przewijany poziomo */
 
-/* lista sond – domyślnie elastyczna */
 .sonde-tabs {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
-  margin-bottom: 6px;
+  padding: 4px 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(61, 212, 255, 0.55) transparent;
 }
 
-/* wersja przewijana w karcie */
-.sonde-tabs.sonde-tabs-scroll {
-  flex: 1;
-  margin-bottom: 0;
-  margin-top: 6px;
-  padding-right: 4px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.sonde-tabs::-webkit-scrollbar {
+  height: 6px;
 }
 
-/* pojedyncza sonda */
+.sonde-tabs::-webkit-scrollbar-track {
+  background: rgba(10, 15, 32, 0.9);
+  border-radius: 999px;
+}
+
+.sonde-tabs::-webkit-scrollbar-thumb {
+  background: rgba(61, 212, 255, 0.55);
+  border-radius: 999px;
+}
+
 .sonde-tab {
   padding: 5px 10px;
   border-radius: 999px;
@@ -342,14 +342,11 @@ body {
   font-weight: 600;
 }
 
-/* zakończone sondy – przygaszone, przerywana ramka */
-.sonde-tab.finished {
-  opacity: 0.55;
-  border-style: dashed;
-}
+/* Panel danych sondy – przewijany w pionie */
 
 .sonde-panel-grid {
   flex: 1;
+  min-height: 0;          /* kluczowe, żeby overflow-y zadziałało */
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
@@ -409,13 +406,14 @@ body {
   padding: 8px 16px 16px;
 }
 
-.charts-scroll {
+.view-charts .charts-scroll {
   width: 100%;
   height: 100%;
   overflow-y: auto;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  grid-auto-rows: minmax(260px, auto);
   padding-bottom: 12px;
 }
 
@@ -493,73 +491,12 @@ body {
     grid-template-columns: 1fr;
   }
 
-  .charts-scroll {
+  .view-charts .charts-scroll {
     grid-template-columns: 1fr;
   }
 
   .card.wide {
     grid-column: auto;
-  }
-}
-
-/* --- Layout zakładki Dane graficzne --- */
-
-#view-charts {
-  display: none;            /* i tak przełączasz klasą .show */
-  height: calc(100vh - 72px); /* dopasuj do wysokości topbara jeśli inna */
-  overflow-y: auto;
-}
-
-#view-charts.show {
-  display: block;
-}
-
-.charts-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-  padding: 16px 24px 24px;
-  align-items: stretch;
-}
-
-/* Karta z wykresem / minimapą */
-.card.chart-card {
-  min-height: 290px;   /* powiększone */
-}
-
-/* mini-mapa – będzie pierwsza i na całą szerokość */
-.card.chart-card.mini-map-card {
-  order: -1;
-  grid-column: 1 / -1;
-  min-height: 260px;
-}
-
-.card.chart-card.mini-map-card #mini-map {
-  width: 100%;
-  height: 100%;
-  min-height: 230px;
-  border-radius: 14px;
-  overflow: hidden;
-}
-
-/* Fullscreen karty – dopasowanie */
-.card.fullscreen {
-  position: fixed;
-  inset: 0;
-  z-index: 999;
-  margin: 0;
-  border-radius: 0;
-}
-
-/* Responsywność kart z wykresami */
-@media (max-width: 1100px) {
-  .charts-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .card.chart-card,
-  .card.chart-card.mini-map-card {
-    min-height: 260px;
   }
 }
 
@@ -614,7 +551,8 @@ body {
   opacity: 0.8;
 }
 
-/* delikatne różne kolory tekstu wg klasy – opcjonalne */
+/* kolory etykiety wg klasy stabilności */
+
 .stability--unstable .class-label {
   color: #ffb86c;
 }
@@ -626,31 +564,4 @@ body {
 }
 .stability--stable .class-label {
   color: #3dd4ff;
-}
-
-/* --- FIX: więcej miejsca na wykresy w zakładce "Dane graficzne" --- */
-
-/* 2 kolumny na szerokich ekranach, rozsądna wysokość kart */
-.view-charts .charts-scroll {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-  grid-auto-rows: minmax(260px, auto);
-}
-
-/* na węższych – jedna kolumna, żeby nic nie nachodziło */
-@media (max-width: 1100px) {
-  .view-charts .charts-scroll {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* każda karta z wykresem ma trochę więcej miejsca w pionie */
-.view-charts .card .card-body {
-  min-height: 220px;
-}
-
-/* fullscreen dalej działa normalnie */
-.view-charts .card.fullscreen .card-body {
-  min-height: 0;
 }
