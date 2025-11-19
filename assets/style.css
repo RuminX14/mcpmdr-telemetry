@@ -294,9 +294,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  
 }
-/* karta z listą sond (scrollowane okienko) */
+
+/* karta z listą sond (przewijane okienko) */
 .sonde-list-card {
   flex: 0 0 auto;
   max-height: 170px;
@@ -304,9 +304,18 @@ body {
   flex-direction: column;
 }
 
-/* przewijana lista sond wewnątrz karty */
+/* lista sond – domyślnie elastyczna */
+.sonde-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+/* wersja przewijana w karcie */
 .sonde-tabs.sonde-tabs-scroll {
   flex: 1;
+  margin-bottom: 0;
   margin-top: 6px;
   padding-right: 4px;
   overflow-y: auto;
@@ -315,7 +324,7 @@ body {
   gap: 4px;
 }
 
-/* pojedyncza sonda jako przycisk w liście */
+/* pojedyncza sonda */
 .sonde-tab {
   padding: 5px 10px;
   border-radius: 999px;
@@ -327,50 +336,16 @@ body {
   white-space: nowrap;
 }
 
-/* już jest, ale doprecyzujemy: */
 .sonde-tab.active {
   background: linear-gradient(135deg, #3dd4ff, #7bffb0);
   color: #050814;
   font-weight: 600;
 }
 
-/* sondy, które już zakończyły pomiar – przygaszone */
+/* zakończone sondy – przygaszone, przerywana ramka */
 .sonde-tab.finished {
   opacity: 0.55;
   border-style: dashed;
-}
-
-/* panel danych ma wypełniać resztę wysokości i być przewijany */
-.sonde-panel-grid {
-  flex: 1;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.sonde-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 6px;
-}
-
-.sonde-tab {
-  padding: 5px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(61, 212, 255, 0.4);
-  background: #111729;
-  color: #e6ebff;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.sonde-tab.active {
-  background: linear-gradient(135deg, #3dd4ff, #7bffb0);
-  color: #050814;
-  font-weight: 600;
 }
 
 .sonde-panel-grid {
@@ -559,7 +534,7 @@ body {
   min-height: 260px;
 }
 
-#mini-map {
+.card.chart-card.mini-map-card #mini-map {
   width: 100%;
   height: 100%;
   min-height: 230px;
@@ -567,7 +542,7 @@ body {
   overflow: hidden;
 }
 
-/* Fullscreen karty – bez zmian, ale dopilnuj: */
+/* Fullscreen karty – dopasowanie */
 .card.fullscreen {
   position: fixed;
   inset: 0;
@@ -576,7 +551,7 @@ body {
   border-radius: 0;
 }
 
-/* Responsywność */
+/* Responsywność kart z wykresami */
 @media (max-width: 1100px) {
   .charts-grid {
     grid-template-columns: 1fr;
@@ -652,6 +627,7 @@ body {
 .stability--stable .class-label {
   color: #3dd4ff;
 }
+
 /* --- FIX: więcej miejsca na wykresy w zakładce "Dane graficzne" --- */
 
 /* 2 kolumny na szerokich ekranach, rozsądna wysokość kart */
