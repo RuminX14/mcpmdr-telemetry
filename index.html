@@ -69,9 +69,18 @@
       <section id="view-telemetry" class="view view-telemetry show">
         <div id="map" class="map"></div>
         <aside class="side-panel">
-          <div id="sonde-tabs" class="sonde-tabs"></div>
-          <div id="sonde-panel" class="sonde-panel-grid"></div>
-        </aside>
+  <!-- przewijane okienko z sondami -->
+  <div class="card sonde-list-card">
+    <div class="card-head">
+      <span>Aktywne radiosondy</span>
+    </div>
+    <div id="sonde-tabs" class="sonde-tabs sonde-tabs-scroll"></div>
+  </div>
+
+  <!-- panel z danymi wybranej sondy -->
+  <div id="sonde-panel" class="sonde-panel-grid"></div>
+</aside>
+
       </section>
 
       <!-- Charts view -->
