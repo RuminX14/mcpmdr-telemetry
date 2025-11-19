@@ -820,25 +820,36 @@
     renderCharts();
   }
 
-  function renderTabs() {
-    const wrap = $('#sonde-tabs');
-    wrap.innerHTML = '';
-    const list = [...state.sondes.values()];
+function renderTabs() {
+  const wrap = $('#sonde-tabs');
+  if (!wrap) return;
+  wrap.innerHTML = '';
 
-    list.sort((a, b) => (b.time || 0) - (a.time || 0));
+  // wszystkie sondy, ale aktywne na górze
+  const list = [...state.sondes.values()].sort((a, b) => {
+    const aActive = a.status === 'active' ? 1 : 0;
+    const bActive = b.status === 'active' ? 1 : 0;
+    if (aActive !== bActive) return bActive - aActive;        // najpierw aktywne
+    return (b.time || 0) - (a.time || 0);                     // potem najnowsze
+  });
 
-    for (const s of list) {
-      const btn = document.createElement('button');
-      btn.className = 'sonde-tab' + (s.id === state.activeId ? ' active' : '');
-      btn.textContent = `${s.type ? (s.type + ' ') : ''}${s.id}`;
-      btn.addEventListener('click', () => setActiveSonde(s.id, true));
-      wrap.appendChild(btn);
-    }
-
-    if (!state.activeId && list.length) {
-      setActiveSonde(list[0].id, false);
-    }
+  for (const s of list) {
+    const btn = document.createElement('button');
+    let cls = 'sonde-tab';
+    if (s.status === 'finished') cls += ' finished';
+    if (s.id === state.activeId) cls += ' active';
+    btn.className = cls;
+    btn.textContent = `${s.type ? (s.type + ' ') : ''}${s.id}`;
+    btn.addEventListener('click', () => setActiveSonde(s.id, true));
+    wrap.appendChild(btn);
   }
+
+  // jeśli nic nie wybrane – ustaw pierwszą aktywną / najnowszą
+  if (!state.activeId && list.length) {
+    setActiveSonde(list[0].id, false);
+  }
+}
+
 
   function setActiveSonde(id, center) {
     state.activeId = id;
