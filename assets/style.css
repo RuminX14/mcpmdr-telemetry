@@ -298,11 +298,21 @@ body {
   gap: 10px;
 }
 
-/* Pasek z aktywnymi sondami – przewijany poziomo */
+/* Karta z listą sond */
+
+.sonde-list-card {
+  flex: 0 0 auto;
+  min-height: 90px;
+}
+
+/* Pasek z aktywnymi sondami – do 3 wierszy, przewijany poziomo */
 
 .sonde-tabs {
-  display: flex;
-  flex-wrap: nowrap;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+  grid-template-rows: repeat(3, auto); /* maks. 3 wiersze */
+  align-content: flex-start;
   gap: 6px;
   padding: 4px 2px;
   overflow-x: auto;
@@ -334,6 +344,8 @@ body {
   font-size: 11px;
   cursor: pointer;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
 }
 
 .sonde-tab.active {
@@ -556,12 +568,15 @@ body {
 .stability--unstable .class-label {
   color: #ffb86c;
 }
+
 .stability--very-unstable .class-label {
   color: #ff7c7c;
 }
+
 .stability--neutral .class-label {
   color: #7bffb0;
 }
+
 .stability--stable .class-label {
   color: #3dd4ff;
 }
