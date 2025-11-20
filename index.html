@@ -85,18 +85,7 @@
       <!-- Charts view -->
       <section id="view-charts" class="view view-charts">
         <div class="charts-scroll">
-          <!-- 1: mini-mapa jako pierwsza karta -->
-          <div class="card mini-map-card">
-            <div class="card-head">
-              <span>Trasa lotu (mini-mapa)</span>
-              <button class="btn icon fullscreen-toggle" title="Pełny ekran">⤢</button>
-            </div>
-            <div class="card-body mini-map-body">
-              <div id="mini-map"></div>
-            </div>
-          </div>
-
-          <!-- 2: temperatura vs czas -->
+          <!-- 1. Temperatura w czasie -->
           <div class="card">
             <div class="card-head">
               <span>Temperatura w czasie</span>
@@ -107,7 +96,7 @@
             </div>
           </div>
 
-          <!-- 3: GNSS -->
+          <!-- 2. Liczba satelitów GNSS w czasie -->
           <div class="card">
             <div class="card-head">
               <span>Liczba satelitów GNSS w czasie</span>
@@ -118,18 +107,7 @@
             </div>
           </div>
 
-          <!-- 4: dane środowiskowe -->
-          <div class="card wide">
-            <div class="card-head">
-              <span>Dane środowiskowe (T, RH, p)</span>
-              <button class="btn icon fullscreen-toggle" title="Pełny ekran">⤢</button>
-            </div>
-            <div class="card-body">
-              <canvas id="chart-env"></canvas>
-            </div>
-          </div>
-
-          <!-- 5: prędkość pozioma -->
+          <!-- 3. Prędkość pozioma w czasie -->
           <div class="card">
             <div class="card-head">
               <span>Prędkość pozioma w czasie</span>
@@ -140,10 +118,10 @@
             </div>
           </div>
 
-          <!-- 6: profil wiatru -->
+          <!-- 4. Profil wiatru -->
           <div class="card">
             <div class="card-head">
-              <span>Profil wiatru (prędkość &amp; kierunek vs wysokość)</span>
+              <span>Profil wiatru (prędkość i kierunek vs wysokość)</span>
               <button class="btn icon fullscreen-toggle" title="Pełny ekran">⤢</button>
             </div>
             <div class="card-body">
@@ -151,7 +129,7 @@
             </div>
           </div>
 
-          <!-- 7: gęstość powietrza -->
+          <!-- 5. Gęstość powietrza vs wysokość -->
           <div class="card">
             <div class="card-head">
               <span>Gęstość powietrza vs wysokość</span>
@@ -162,7 +140,7 @@
             </div>
           </div>
 
-          <!-- 8: RSSI + napięcie vs temperatura -->
+          <!-- 6. RSSI i napięcie vs temperatura -->
           <div class="card">
             <div class="card-head">
               <span>RSSI i napięcie vs temperatura</span>
@@ -173,15 +151,36 @@
             </div>
           </div>
 
-          <!-- 9: stabilność atmosfery – box zamiast wykresu -->
+          <!-- 7. Wskaźnik stabilności atmosfery -->
           <div class="card">
             <div class="card-head">
-              <span>Stabilność atmosfery (wskaźnik Γ)</span>
+              <span>Stabilność atmosfery</span>
               <button class="btn icon fullscreen-toggle" title="Pełny ekran">⤢</button>
             </div>
             <div class="card-body">
-              <!-- canvas zostaje, ale w JS jest chowamy i wstawiamy tam pasek -->
               <canvas id="chart-stability"></canvas>
+            </div>
+          </div>
+
+          <!-- 8. Dane środowiskowe (T, RH, p) – szeroka karta na dole -->
+          <div class="card wide">
+            <div class="card-head">
+              <span>Dane środowiskowe (T, RH, p)</span>
+              <button class="btn icon fullscreen-toggle" title="Pełny ekran">⤢</button>
+            </div>
+            <div class="card-body">
+              <canvas id="chart-env"></canvas>
+            </div>
+          </div>
+
+          <!-- 9. Trasa lotu (mini-mapa) -->
+          <div class="card">
+            <div class="card-head">
+              <span>Trasa lotu (mini-mapa)</span>
+              <button class="btn icon fullscreen-toggle" title="Pełny ekran">⤢</button>
+            </div>
+            <div class="card-body mini-map-body">
+              <div id="mini-map"></div>
             </div>
           </div>
         </div>
