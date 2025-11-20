@@ -391,6 +391,7 @@
       const data = await res.json();
       $('#status-line').textContent =
         'TTGO: odebrano dane (' + (Array.isArray(data) ? data.length : 1) + ')';
+      // TODO: tu w przyszłości można wypełnić dane GNSS / RSSI / itp. dla wykresów
     } catch (e) {
       $('#status-line').textContent = 'TTGO: błąd pobierania: ' + e.message;
     }
@@ -402,7 +403,7 @@
       ? `/api/radiosondy?mode=single&id=${encodeURIComponent(state.filterId)}`
       : '/api/radiosondy?mode=all';
 
-    const q = (API_BASE || '') + path;   // jeśli API_BASE puste → względne, inaczej pełny URL
+    const q = (API_BASE || '') + path;
 
     let lastErr = null;
     for (let attempt = 1; attempt <= 3; attempt++) {
@@ -763,18 +764,23 @@
     s.marker.bindTooltip(label, { direction: 'top', offset: [0, -8] });
   }
 
-  // Launch / Burst na trasie lotu (prosty: start + najwyższy punkt)
+  // Launch / Burst na trasie lotu (start + apex, ale burst tylko przy opadaniu)
   function updateLaunchBurstMarkers(s) {
     if (!state.map || !s.history.length) return;
 
     const sorted = s.history.slice().sort((a, b) => a.time - b.time);
     const launch = sorted[0];
-    let top = null;
+
+    // szukamy maksymalnej wysokości (apex)
+    let apex = null;
     for (const h of sorted) {
       if (!Number.isFinite(h.alt)) continue;
-      if (!top || h.alt > top.alt) top = h;
+      if (!apex || h.alt > apex.alt) apex = h;
     }
 
+    const last = sorted[sorted.length - 1];
+
+    // LAUNCH – zawsze pokazujemy, jeśli mamy pierwszy punkt
     if (launch && Number.isFinite(launch.lat) && Number.isFinite(launch.lon)) {
       const latlng = [launch.lat, launch.lon];
       if (!s.launchMarker) {
@@ -784,14 +790,24 @@
           fillColor: '#7bffb0',
           fillOpacity: 0.95
         }).addTo(state.map);
-        s.launchMarker.bindTooltip('Launch', { direction: 'top', offset: [0, -6] });
+        s.launchMarker.bindTooltip('Start (launch)', { direction: 'top', offset: [0, -6] });
       } else {
         s.launchMarker.setLatLng(latlng);
       }
     }
 
-    if (top && Number.isFinite(top.lat) && Number.isFinite(top.lon)) {
-      const latlng2 = [top.lat, top.lon];
+    // BURST – pojawia się dopiero, gdy sonda ZACZNIE SPADAĆ
+    // tzn. aktualna wys. < wys. maksymalnej (z lekką histerezą)
+    const HYST = 10; // 10 m
+    const canShowBurst =
+      apex &&
+      last &&
+      Number.isFinite(apex.alt) &&
+      Number.isFinite(last.alt) &&
+      last.alt < apex.alt - HYST;
+
+    if (canShowBurst) {
+      const latlng2 = [apex.lat, apex.lon];
       if (!s.burstMarker) {
         s.burstMarker = L.circleMarker(latlng2, {
           radius: 5,
@@ -799,9 +815,15 @@
           fillColor: '#ff5470',
           fillOpacity: 0.95
         }).addTo(state.map);
-        s.burstMarker.bindTooltip('Burst', { direction: 'top', offset: [0, -6] });
+        s.burstMarker.bindTooltip('Burst (pęknięcie balonu)', { direction: 'top', offset: [0, -6] });
       } else {
         s.burstMarker.setLatLng(latlng2);
+      }
+    } else {
+      // jeśli jeszcze nie spada, to burst chowamy
+      if (s.burstMarker) {
+        s.burstMarker.remove();
+        s.burstMarker = null;
       }
     }
   }
@@ -826,6 +848,7 @@
 
   function renderTabs() {
     const wrap = $('#sonde-tabs');
+    if (!wrap) return;
     wrap.innerHTML = '';
     const list = [...state.sondes.values()];
 
@@ -859,6 +882,8 @@
   function renderPanel() {
     const s = state.sondes.get(state.activeId);
     const panel = $('#sonde-panel');
+    if (!panel) return;
+
     if (!s) {
       panel.innerHTML = '';
       return;
@@ -878,13 +903,12 @@
       { label: 'Wilgotność [%]', value: fmt(s.humidity, 0) },
       { label: 'Prędkość pionowa [m/s]', value: fmt(s.verticalSpeed, 1) },
       { label: 'Prędkość pozioma [m/s]', value: fmt(s.horizontalSpeed, 1) },
-      { label: 'Kurs [°]', value: fmt(s.horizontalCourse, 0) },
+      { label: 'Kierunek lotu [°]', value: fmt(s.horizontalCourse, 0) },
       { label: 'Odległość od RX [m]', value: fmt(s.distanceToRx, 0) },
       { label: '0 °C izoterma [m]', value: fmt(s.zeroIsoHeight, 0) },
       { label: 'LCL [m]', value: fmt(s.lclHeight, 0) },
-      { label: 'θ [K]', value: fmt(s.theta, 1) },
+      { label: 'Θ potencjalna [K]', value: fmt(s.theta, 1) },
       { label: 'Stabilność Γ [K/km]', value: fmt(s.stabilityIndex, 1) }
-      // wskaźnik stabilności graficzny w zakładce wykresów
     ];
 
     const stabilityTag = s.stabilityClass ? ` — ${s.stabilityClass}` : '';
@@ -1024,7 +1048,7 @@
     // mała mapa
     renderMiniMap(s, hist);
 
-    // 1) Temp vs czas
+    // 1) Temperatura vs czas
     (function () {
       const id = 'chart-volt-temp';
       const chart = ensureChart(id, () => ({
@@ -1065,7 +1089,7 @@
       chart.update('none');
     })();
 
-    // 2) GNSS Satellites in Use – placeholder
+    // 2) GNSS – liczba satelitów w czasie (na razie placeholder – dane z TTGO w przyszłości)
     (function () {
       const id = 'chart-gnss';
       const chart = ensureChart(id, () => ({
@@ -1073,7 +1097,7 @@
         data: {
           datasets: [
             {
-              label: 'Satellites in use',
+              label: 'Liczba satelitów GNSS',
               data: [],
               borderWidth: 1.5,
               pointRadius: 0
@@ -1096,11 +1120,14 @@
         }
       }));
       if (!chart) return;
-      chart.data.datasets[0].data = []; // TTGO w przyszłości
+
+      // Na razie brak danych GNSS z radiosondy.info / TTGO – wykres się renderuje,
+      // ale jest pusty, dopóki nie zasilimy go realnymi wartościami.
+      chart.data.datasets[0].data = [];
       chart.update('none');
     })();
 
-    // 3) Payload Environmental Sensor Data – T / RH / p
+    // 3) Dane środowiskowe – T / RH / p
     (function () {
       const id = 'chart-env';
       const chart = ensureChart(id, () => ({
@@ -1137,9 +1164,9 @@
           parsing: false,
           scales: {
             x: timeScaleOptions('Czas'),
-            yTemp: commonY('T [°C]'),
-            yRH: { ...commonY('RH [%]'), position: 'right' },
-            yP: { ...commonY('p [hPa]'), position: 'right' }
+            yTemp: commonY('Temperatura [°C]'),
+            yRH: { ...commonY('Wilgotność [%]'), position: 'right' },
+            yP: { ...commonY('Ciśnienie [hPa]'), position: 'right' }
           },
           plugins: {
             tooltip: tooltipWithAltitude(),
@@ -1165,7 +1192,7 @@
       chart.update('none');
     })();
 
-    // 4) Horizontal Velocity – czasowo
+    // 4) Prędkość pozioma vs czas
     (function () {
       const id = 'chart-hvel';
       const chart = ensureChart(id, () => ({
@@ -1187,7 +1214,7 @@
           parsing: false,
           scales: {
             x: timeScaleOptions('Czas'),
-            y: commonY('v_h [m/s]')
+            y: commonY('Prędkość pozioma vₕ [m/s]')
           },
           plugins: {
             tooltip: tooltipWithAltitude(),
@@ -1224,7 +1251,7 @@
         data: {
           datasets: [
             {
-              label: 'v_h [m/s] (wznoszenie)',
+              label: 'vₕ [m/s] (wznoszenie)',
               xAxisID: 'xSpd',
               yAxisID: 'y',
               data: [],
@@ -1233,7 +1260,7 @@
               borderWidth: 1.2
             },
             {
-              label: 'v_h [m/s] (opadanie)',
+              label: 'vₕ [m/s] (opadanie)',
               xAxisID: 'xSpd',
               yAxisID: 'y',
               data: [],
@@ -1243,7 +1270,7 @@
               borderDash: [4, 3]
             },
             {
-              label: 'kierunek [°] (wznoszenie)',
+              label: 'Kierunek [°] (wznoszenie)',
               xAxisID: 'xDir',
               yAxisID: 'y',
               data: [],
@@ -1252,7 +1279,7 @@
               borderWidth: 1.2
             },
             {
-              label: 'kierunek [°] (opadanie)',
+              label: 'Kierunek [°] (opadanie)',
               xAxisID: 'xDir',
               yAxisID: 'y',
               data: [],
@@ -1272,7 +1299,7 @@
             xSpd: {
               type: 'linear',
               position: 'bottom',
-              title: { display: true, text: 'Prędkość wiatru v_h [m/s]', color: '#e6ebff' },
+              title: { display: true, text: 'Prędkość wiatru vₕ [m/s]', color: '#e6ebff' },
               grid: { color: 'rgba(134,144,176,.35)' },
               ticks: { color: '#e6ebff' }
             },
@@ -1351,6 +1378,23 @@
       chart.data.datasets[1].data = speedDown;
       chart.data.datasets[2].data = dirUp;
       chart.data.datasets[3].data = dirDown;
+
+      // AUTOSKALOWANIE osi prędkości xSpd → brak „wyjeżdżania” za prawą krawędź
+      const allSpeeds = [...speedUp, ...speedDown];
+      let maxSpeed = 0;
+      for (const p of allSpeeds) {
+        if (p && Number.isFinite(p.x) && p.x > maxSpeed) maxSpeed = p.x;
+      }
+      if (chart.options.scales && chart.options.scales.xSpd) {
+        if (maxSpeed > 0) {
+          chart.options.scales.xSpd.min = 0;
+          chart.options.scales.xSpd.max = maxSpeed * 1.1;
+        } else {
+          chart.options.scales.xSpd.min = undefined;
+          chart.options.scales.xSpd.max = undefined;
+        }
+      }
+
       chart.update('none');
     })();
 
@@ -1362,7 +1406,7 @@
         data: {
           datasets: [
             {
-              label: 'Gęstość [kg/m³]',
+              label: 'Gęstość powietrza [kg/m³]',
               data: [],
               borderWidth: 1.2,
               pointRadius: 3,
@@ -1422,7 +1466,7 @@
               showLine: false
             },
             {
-              label: 'Napięcie [V]',
+              label: 'Napięcie zasilania [V]',
               yAxisID: 'yU',
               data: [],
               borderWidth: 1.2,
@@ -1444,7 +1488,7 @@
               ticks: { color: '#e6ebff' }
             },
             yRssi: commonY('RSSI [dB]'),
-            yU: { ...commonY('U [V]'), position: 'right' }
+            yU: { ...commonY('Napięcie [V]'), position: 'right' }
           },
           plugins: {
             tooltip: tooltipWithAltitude(),
