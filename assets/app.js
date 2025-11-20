@@ -93,7 +93,6 @@
 
   function bearing(lat1, lon1, lat2, lon2) {
     const toRad = x => x * Math.PI / 180;
-    const toDeg = x => x * 180 / Math.PI;
     const y = Math.sin(toRad(lon2 - lon1)) * Math.cos(toRad(lat2));
     const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
       Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lon2 - lon1));
@@ -418,12 +417,10 @@
         console.log('[radiosondy] HTTP status =', res.status);
 
         if (!res.ok) {
-          // 404 / 500 itd. – rzucamy opis
           throw new Error('HTTP ' + res.status + ' przy zapytaniu ' + path);
         }
 
         const csv = await res.text();
-        // mała diagnostyka: pokaż pierwsze ~200 znaków
         console.log('[radiosondy] sample CSV =', csv.slice(0, 200));
 
         parseAndMergeCSV(csv);
@@ -454,7 +451,6 @@
     const sep = lines[0].includes(';') ? ';' : ',';
     const headers = lines[0].split(sep).map(h => h.trim().toLowerCase());
 
-    // diagnostyka nagłówków
     console.log('[radiosondy] headers =', headers);
 
     function colIdx(names) {
@@ -497,6 +493,9 @@
 
     let debugCount = 0;
 
+    // najpierw zbieramy punkty do mapy: id -> tablica punktów
+    const perSonde = new Map();
+
     for (let li = 1; li < lines.length; li++) {
       const row = lines[li].split(sep);
 
@@ -513,22 +512,16 @@
       const tRaw = rec(idx.time);
       let tms = NaN;
 
-      // 1) czysty timestamp (np. 1700300000)
       if (/^[0-9]+$/.test(tRaw)) {
         const n = parseInt(tRaw, 10);
         tms = (tRaw.length < 11) ? n * 1000 : n;
-      }
-      // 2) radiosondy.info: "2025-11-18 10:09:03"
-      else if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(tRaw)) {
+      } else if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(tRaw)) {
         const [datePart, timePart] = tRaw.split(' ');
         const [Y, M, D] = datePart.split('-').map(Number);
         const [h, m, s] = timePart.split(':').map(Number);
-        // tworzymy czas w strefie przeglądarki (lokalnej)
         const d = new Date(Y, M - 1, D, h, m, s);
         tms = d.getTime();
-      }
-      // 3) cokolwiek innego – ostatnia próba
-      else if (tRaw) {
+      } else if (tRaw) {
         const parsed = Date.parse(tRaw);
         if (Number.isFinite(parsed)) tms = parsed;
       }
@@ -550,15 +543,13 @@
       }
 
       const id = rec(idx.id) || 'UNKNOWN';
-      if (state.filterId &&
-        !id.toLowerCase().includes(state.filterId.toLowerCase())) {
+      if (state.filterId && !id.toLowerCase().includes(state.filterId.toLowerCase())) {
         if (debugCount < 5) {
           console.log('[radiosondy] skip row (filterId mismatch)', li, 'id=', id);
         }
         continue;
       }
 
-      const s = getOrCreateSonde(id);
       const point = {
         time: new Date(tms),
         lat,
@@ -571,17 +562,20 @@
 
       const desc = rec(idx.desc);
 
-      mergePoint(s, point, {
+      const extra = {
         type: rec(idx.type),
         windSpeed: toNum(rec(idx.windSpeed)),
         windDir: toNum(rec(idx.windDir)),
         rssi: toNum(rec(idx.rssi)),
         description: desc
-      });
+      };
+
+      if (!perSonde.has(id)) perSonde.set(id, []);
+      perSonde.get(id).push({ point, extra });
 
       if (debugCount < 5) {
         console.log(
-          '[radiosondy] parsed point',
+          '[radiosondy] parsed point (raw)',
           'id=', id,
           'time=', point.time.toISOString(),
           'lat=', lat,
@@ -592,6 +586,16 @@
       debugCount++;
     }
 
+    // teraz dopiero łączymy w historię, w kolejności czasowej rosnącej
+    for (const [id, arr] of perSonde.entries()) {
+      arr.sort((a, b) => a.point.time - b.point.time);
+      const s = getOrCreateSonde(id);
+      for (const { point, extra } of arr) {
+        mergePoint(s, point, extra);
+      }
+    }
+
+    // czyszczenie starych, zakończonych sond
     const now = Date.now();
     for (const [id, s] of state.sondes) {
       if (!s.time) continue;
@@ -820,36 +824,25 @@
     renderCharts();
   }
 
-function renderTabs() {
-  const wrap = $('#sonde-tabs');
-  if (!wrap) return;
-  wrap.innerHTML = '';
+  function renderTabs() {
+    const wrap = $('#sonde-tabs');
+    wrap.innerHTML = '';
+    const list = [...state.sondes.values()];
 
-  // wszystkie sondy, ale aktywne na górze
-  const list = [...state.sondes.values()].sort((a, b) => {
-    const aActive = a.status === 'active' ? 1 : 0;
-    const bActive = b.status === 'active' ? 1 : 0;
-    if (aActive !== bActive) return bActive - aActive;        // najpierw aktywne
-    return (b.time || 0) - (a.time || 0);                     // potem najnowsze
-  });
+    list.sort((a, b) => (b.time || 0) - (a.time || 0));
 
-  for (const s of list) {
-    const btn = document.createElement('button');
-    let cls = 'sonde-tab';
-    if (s.status === 'finished') cls += ' finished';
-    if (s.id === state.activeId) cls += ' active';
-    btn.className = cls;
-    btn.textContent = `${s.type ? (s.type + ' ') : ''}${s.id}`;
-    btn.addEventListener('click', () => setActiveSonde(s.id, true));
-    wrap.appendChild(btn);
+    for (const s of list) {
+      const btn = document.createElement('button');
+      btn.className = 'sonde-tab' + (s.id === state.activeId ? ' active' : '');
+      btn.textContent = `${s.type ? (s.type + ' ') : ''}${s.id}`;
+      btn.addEventListener('click', () => setActiveSonde(s.id, true));
+      wrap.appendChild(btn);
+    }
+
+    if (!state.activeId && list.length) {
+      setActiveSonde(list[0].id, false);
+    }
   }
-
-  // jeśli nic nie wybrane – ustaw pierwszą aktywną / najnowszą
-  if (!state.activeId && list.length) {
-    setActiveSonde(list[0].id, false);
-  }
-}
-
 
   function setActiveSonde(id, center) {
     state.activeId = id;
