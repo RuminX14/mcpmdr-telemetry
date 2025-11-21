@@ -1646,7 +1646,7 @@
     `;
   }
 
-  // ======= Raport PDF (bez polskich znaków) =======
+    // ======= Raport PDF (bez polskich znaków, z mocniejszym kontrastem wykresów) =======
   async function generatePdfReport() {
     const { jsPDF } = window.jspdf || {};
     if (!jsPDF || typeof html2canvas === 'undefined') {
@@ -1676,10 +1676,10 @@
     let stabAscii = '-';
     switch (s.stabilityClass) {
       case 'silnie chwiejna': stabAscii = 'Very unstable'; break;
-      case 'chwiejna': stabAscii = 'Unstable'; break;
-      case 'obojętna': stabAscii = 'Neutral'; break;
-      case 'stabilna': stabAscii = 'Stable'; break;
-      case 'silnie stabilna': stabAscii = 'Very stable'; break;
+      case 'chwiejna':        stabAscii = 'Unstable';      break;
+      case 'obojętna':        stabAscii = 'Neutral';       break;
+      case 'stabilna':        stabAscii = 'Stable';        break;
+      case 'silnie stabilna': stabAscii = 'Very stable';   break;
       default: stabAscii = '-';
     }
 
@@ -1700,17 +1700,42 @@
     doc.text(`Stability Gamma [K/km]: ${fmt(s.stabilityIndex, 1)}`, 14, y); y += 6;
     doc.text(`Stability class: ${stabAscii}`, 14, y); y += 8;
 
-    // Funkcja pomocnicza do wstawiania obrazkow (wykresy)
+    // Funkcja pomocnicza do wstawiania obrazków (wykresy) z podbitym kontrastem
     function addChartImage(chartId, label) {
       const chart = state.charts[chartId];
       if (!chart) return;
 
-      const canvas = chart.canvas;
-      const imgData = canvas.toDataURL('image/png', 0.9);
+      const srcCanvas = chart.canvas;
+      if (!srcCanvas) return;
+
+      // Offscreen canvas do poprawy widoczności
+      const scale = 1.5; // lekkie podbicie rozdzielczosci
+      const tmpCanvas = document.createElement('canvas');
+      tmpCanvas.width  = srcCanvas.width  * scale;
+      tmpCanvas.height = srcCanvas.height * scale;
+
+      const ctx = tmpCanvas.getContext('2d');
+      if (!ctx) return;
+
+      // biale tlo + filtr zwiekszajacy kontrast i saturacje
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, tmpCanvas.width, tmpCanvas.height);
+
+      // jesli przegladarka nie wspiera filter – po prostu zignoruje (ale tlo i tak bedzie biale)
+      ctx.filter = 'contrast(1.4) saturate(1.3)';
+
+      ctx.drawImage(
+        srcCanvas,
+        0, 0, srcCanvas.width, srcCanvas.height,
+        0, 0, tmpCanvas.width, tmpCanvas.height
+      );
+
+      const imgData = tmpCanvas.toDataURL('image/png', 0.95);
+
       const pageWidth = 210;
       const margin = 15;
       const maxWidth = pageWidth - margin * 2;
-      const aspect = canvas.height / canvas.width;
+      const aspect = tmpCanvas.height / tmpCanvas.width;
       const imgWidth = maxWidth;
       const imgHeight = imgWidth * aspect;
 
@@ -1728,12 +1753,12 @@
     }
 
     // Wykresy
-    addChartImage('chart-volt-temp', 'Temperature vs time');
-    addChartImage('chart-hvel', 'Horizontal speed vs time');
-    addChartImage('chart-env', 'Environmental data (T, RH, p)');
-    addChartImage('chart-wind-profile', 'Wind profile');
-    addChartImage('chart-density', 'Air density vs altitude');
-    addChartImage('chart-signal-temp', 'RSSI and supply voltage vs temperature');
+    addChartImage('chart-volt-temp',     'Temperature vs time');
+    addChartImage('chart-hvel',          'Horizontal speed vs time');
+    addChartImage('chart-env',           'Environmental data (T, RH, p)');
+    addChartImage('chart-wind-profile',  'Wind profile');
+    addChartImage('chart-density',       'Air density vs altitude');
+    addChartImage('chart-signal-temp',   'RSSI and supply voltage vs temperature');
 
     // Mini-mapa – trasa lotu
     const miniEl = document.getElementById('mini-map');
@@ -1747,8 +1772,8 @@
       y += 4;
 
       try {
-        const canvasMini = await html2canvas(miniEl, { useCORS: true, scale: 2 });
-        const imgDataMini = canvasMini.toDataURL('image/png', 0.9);
+        const canvasMini = await html2canvas(miniEl, { useCORS: true, scale: 2, backgroundColor: '#ffffff' });
+        const imgDataMini = canvasMini.toDataURL('image/png', 0.95);
         const pageWidth = 210;
         const margin = 15;
         const maxWidth = pageWidth - margin * 2;
