@@ -1738,7 +1738,12 @@ function addChartImage(chartId, label) {
   doc.addImage(imgData, 'PNG', margin, y, imgWidth, imgHeight);
   y += imgHeight + 8;
 }
+console.error('Mini map to PDF error:', e);
+      }
+    }
 
+    doc.save(`sonde_${s.id}_report.pdf`);
+  }
 
   // ======= Boot =======
   window.addEventListener('DOMContentLoaded', () => {
