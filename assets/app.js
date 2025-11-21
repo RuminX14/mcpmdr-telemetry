@@ -1646,171 +1646,191 @@
     `;
   }
 
-  // ======= Raport PDF (bez polskich znakow, z mocniejszym kontrastem wykresow) =======
-  async function generatePdfReport() {
-    const { jsPDF } = window.jspdf || {};
-    if (!jsPDF || typeof html2canvas === 'undefined') {
-      alert('PDF generator not available (jsPDF / html2canvas missing).');
-      return;
-    }
+// ======= Raport PDF (bez polskich znakow, z mocniejszym kontrastem wykresow) =======
+async function generatePdfReport() {
+  const { jsPDF } = window.jspdf || {};
+  if (!jsPDF || typeof html2canvas === 'undefined') {
+    alert('PDF generator not available (jsPDF / html2canvas missing).');
+    return;
+  }
 
-    const s = state.sondes.get(state.activeId);
-    if (!s) {
-      alert('No active sonde selected.');
-      return;
-    }
+  const s = state.sondes.get(state.activeId);
+  if (!s) {
+    alert('No active sonde selected.');
+    return;
+  }
 
-    const doc = new jsPDF('p', 'mm', 'a4');
-    let y = 15;
+  const doc = new jsPDF('p', 'mm', 'a4');
+  let y = 15;
 
-    // Naglowek (ASCII only)
-    doc.setFontSize(16);
-    doc.text('Radiosonde telemetry report', 105, y, { align: 'center' });
-    y += 10;
+  // Naglowek (ASCII only)
+  doc.setFontSize(16);
+  doc.text('Radiosonde telemetry report', 105, y, { align: 'center' });
+  y += 10;
 
-    doc.setFontSize(11);
-    const timeStr = s.time ? new Date(s.time).toLocaleString() : '-';
-    const statusAscii = (s.status === 'active') ? 'Active' : 'Finished';
+  doc.setFontSize(11);
+  const timeStr = s.time ? new Date(s.time).toLocaleString() : '-';
+  const statusAscii = (s.status === 'active') ? 'Active' : 'Finished';
 
-    let stabAscii = '-';
-    switch (s.stabilityClass) {
-      case 'silnie chwiejna': stabAscii = 'Very unstable'; break;
-      case 'chwiejna':        stabAscii = 'Unstable';      break;
-      case 'obojętna':        stabAscii = 'Neutral';       break;
-      case 'stabilna':        stabAscii = 'Stable';        break;
-      case 'silnie stabilna': stabAscii = 'Very stable';   break;
-      default:                stabAscii = '-';
-    }
+  let stabAscii = '-';
+  switch (s.stabilityClass) {
+    case 'silnie chwiejna': stabAscii = 'Very unstable'; break;
+    case 'chwiejna':        stabAscii = 'Unstable';      break;
+    case 'obojętna':        stabAscii = 'Neutral';       break;
+    case 'stabilna':        stabAscii = 'Stable';        break;
+    case 'silnie stabilna': stabAscii = 'Very stable';   break;
+    default:                stabAscii = '-';
+  }
 
-    doc.text(`Sonde ID: ${s.id}`, 14, y); y += 6;
-    doc.text(`Type: ${s.type || '-'}`, 14, y); y += 6;
-    doc.text(`Last fix: ${timeStr}`, 14, y); y += 6;
-    doc.text(`Status: ${statusAscii}`, 14, y); y += 6;
+  doc.text(`Sonde ID: ${s.id}`, 14, y); y += 6;
+  doc.text(`Type: ${s.type || '-'}`, 14, y); y += 6;
+  doc.text(`Last fix: ${timeStr}`, 14, y); y += 6;
+  doc.text(`Status: ${statusAscii}`, 14, y); y += 6;
 
-    doc.text(`Alt [m]: ${fmt(s.alt, 0)}`, 14, y); y += 6;
-    doc.text(`Temp [C]: ${fmt(s.temp, 1)}`, 14, y); y += 6;
-    doc.text(`Dew point [C]: ${fmt(s.dewPoint, 1)}`, 14, y); y += 6;
-    doc.text(`Pressure [hPa]: ${fmt(s.pressure, 1)}`, 14, y); y += 6;
-    doc.text(`RH [%]: ${fmt(s.humidity, 0)}`, 14, y); y += 6;
-    doc.text(`Vertical speed [m/s]: ${fmt(s.verticalSpeed, 1)}`, 14, y); y += 6;
-    doc.text(`Horizontal speed [m/s]: ${fmt(s.horizontalSpeed, 1)}`, 14, y); y += 6;
-    doc.text(`Distance to RX [m]: ${fmt(s.distanceToRx, 0)}`, 14, y); y += 6;
-    doc.text(`Theta potential [K]: ${fmt(s.theta, 1)}`, 14, y); y += 6;
-    doc.text(`Stability Gamma [K/km]: ${fmt(s.stabilityIndex, 1)}`, 14, y); y += 6;
-    doc.text(`Stability class: ${stabAscii}`, 14, y); y += 8;
+  doc.text(`Alt [m]: ${fmt(s.alt, 0)}`, 14, y); y += 6;
+  doc.text(`Temp [C]: ${fmt(s.temp, 1)}`, 14, y); y += 6;
+  doc.text(`Dew point [C]: ${fmt(s.dewPoint, 1)}`, 14, y); y += 6;
+  doc.text(`Pressure [hPa]: ${fmt(s.pressure, 1)}`, 14, y); y += 6;
+  doc.text(`RH [%]: ${fmt(s.humidity, 0)}`, 14, y); y += 6;
+  doc.text(`Vertical speed [m/s]: ${fmt(s.verticalSpeed, 1)}`, 14, y); y += 6;
+  doc.text(`Horizontal speed [m/s]: ${fmt(s.horizontalSpeed, 1)}`, 14, y); y += 6;
+  doc.text(`Distance to RX [m]: ${fmt(s.distanceToRx, 0)}`, 14, y); y += 6;
+  doc.text(`Theta potential [K]: ${fmt(s.theta, 1)}`, 14, y); y += 6;
+  doc.text(`Stability Gamma [K/km]: ${fmt(s.stabilityIndex, 1)}`, 14, y); y += 6;
+  doc.text(`Stability class: ${stabAscii}`, 14, y); y += 8;
 
-    // ===== Pomocnicza funkcja: wykres -> obrazek w trybie "jasny PDF" =====
-    function addChartImage(chartId, label) {
-      const chart = state.charts[chartId];
-      if (!chart) return;
+  // ===== Pomocnicza funkcja: wykres -> obrazek w trybie "jasny PDF" =====
+  function addChartImage(chartId, label) {
+    const chart = state.charts[chartId];
+    if (!chart || !chart.canvas) return;
 
-      const srcCanvas = chart.canvas;
-      if (!srcCanvas) return;
+    const srcCanvas = chart.canvas;
 
-      // zapamietaj oryginalne opcje wykresu
-      const origOptions = JSON.parse(JSON.stringify(chart.options || {}));
+    // zapamietanie poprzednich kolorow skal i legendy
+    const scales = (chart.options && chart.options.scales) || {};
+    const prevScaleStyles = [];
 
-      // wlacz "jasny" tryb do PDF: czarne siatki, czarne podpisy
-      chart.options = chart.options || {};
-      chart.options.plugins = chart.options.plugins || {};
-
-      // w PDF nie rysujemy etykiet wysokosci nad wykresem
-      if (chart.options.plugins.altitudeTopAxis) {
-        chart.options.plugins.altitudeTopAxis.enabled = false;
-      }
-
-      const scales = chart.options.scales || {};
-      Object.values(scales).forEach(sc => {
-        if (!sc) return;
-        sc.grid = sc.grid || {};
-        sc.grid.color = '#00000033';   // delikatna czarna siatka
-        sc.ticks = sc.ticks || {};
-        sc.ticks.color = '#000000';    // czarne liczby
-        if (sc.title) {
-          sc.title.color = '#000000';  // czarny tytul osi
-        }
+    Object.keys(scales).forEach(key => {
+      const sc = scales[key];
+      if (!sc) return;
+      prevScaleStyles.push({
+        key,
+        gridColor: sc.grid && sc.grid.color,
+        tickColor: sc.ticks && sc.ticks.color,
+        titleColor: sc.title && sc.title.color
       });
 
-      if (!chart.options.plugins.legend) chart.options.plugins.legend = {};
-      chart.options.plugins.legend.labels = chart.options.plugins.legend.labels || {};
-      chart.options.plugins.legend.labels.color = '#000000';
+      sc.grid = sc.grid || {};
+      sc.grid.color = '#00000033';   // delikatna czarna siatka
 
-      chart.update();
+      sc.ticks = sc.ticks || {};
+      sc.ticks.color = '#000000';    // czarne liczby
 
-      // rysujemy na bialym tle
-      const tmpCanvas = document.createElement('canvas');
-      tmpCanvas.width  = srcCanvas.width;
-      tmpCanvas.height = srcCanvas.height;
-      const ctx = tmpCanvas.getContext('2d');
+      if (sc.title) {
+        sc.title.color = '#000000';  // czarny tytul osi
+      }
+    });
 
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, tmpCanvas.width, tmpCanvas.height);
-      ctx.drawImage(srcCanvas, 0, 0);
+    const plugins = chart.options.plugins = chart.options.plugins || {};
+    const legend = plugins.legend = plugins.legend || {};
+    const legendLabels = legend.labels = legend.labels || {};
+    const prevLegendColor = legendLabels.color;
+    legendLabels.color = '#000000';
 
-      const imgData = tmpCanvas.toDataURL('image/png', 1.0);
+    // w PDF nie potrzebujemy etykiet wysokosci nad wykresem
+    let prevAltEnabled;
+    if (plugins.altitudeTopAxis) {
+      prevAltEnabled = plugins.altitudeTopAxis.enabled;
+      plugins.altitudeTopAxis.enabled = false;
+    }
 
-      // przywroc oryginalne opcje wykresu
-      chart.options = origOptions;
-      chart.update();
+    chart.update('none');
 
-      // wstawiamy obrazek do PDF
+    // rysujemy na bialym tle (nie zmieniamy oryginalnego canvasu)
+    const tmpCanvas = document.createElement('canvas');
+    tmpCanvas.width  = srcCanvas.width;
+    tmpCanvas.height = srcCanvas.height;
+    const ctx = tmpCanvas.getContext('2d');
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, tmpCanvas.width, tmpCanvas.height);
+    ctx.drawImage(srcCanvas, 0, 0);
+
+    const imgData = tmpCanvas.toDataURL('image/png', 1.0);
+
+    // przywracamy poprzednie kolory wykresu na stronie
+    prevScaleStyles.forEach(p => {
+      const sc = scales[p.key];
+      if (!sc) return;
+      if (sc.grid)  sc.grid.color  = p.gridColor;
+      if (sc.ticks) sc.ticks.color = p.tickColor;
+      if (sc.title) sc.title.color = p.titleColor;
+    });
+    legendLabels.color = prevLegendColor;
+    if (plugins.altitudeTopAxis) {
+      plugins.altitudeTopAxis.enabled = prevAltEnabled;
+    }
+    chart.update('none');
+
+    // wstawiamy obrazek do PDF
+    const pageWidth = 210;
+    const margin = 15;
+    const maxWidth = pageWidth - margin * 2;
+    const aspect = tmpCanvas.height / tmpCanvas.width;
+    const imgWidth = maxWidth;
+    const imgHeight = imgWidth * aspect;
+
+    if (y + imgHeight + 10 > 287) {
+      doc.addPage();
+      y = 15;
+    }
+
+    doc.setFontSize(11);
+    doc.text(label, margin, y);
+    y += 4;
+
+    doc.addImage(imgData, 'PNG', margin, y, imgWidth, imgHeight);
+    y += imgHeight + 8;
+  }
+
+  // ===== Wykresy =====
+  addChartImage('chart-volt-temp',   'Temperature vs time');
+  addChartImage('chart-hvel',        'Horizontal speed vs time');
+  addChartImage('chart-env',         'Environmental data (T, RH, p)');
+  addChartImage('chart-wind-profile','Wind profile');
+  addChartImage('chart-density',     'Air density vs altitude');
+  addChartImage('chart-signal-temp', 'RSSI and supply voltage vs temperature');
+
+  // ===== Mini-mapa – trasa lotu =====
+  const miniEl = document.getElementById('mini-map');
+  if (miniEl) {
+    if (y + 70 > 287) {
+      doc.addPage();
+      y = 15;
+    }
+    doc.setFontSize(11);
+    doc.text('Flight path (mini map)', 15, y);
+    y += 4;
+
+    try {
+      const canvasMini = await html2canvas(miniEl, { useCORS: true, scale: 2 });
+      const imgDataMini = canvasMini.toDataURL('image/png', 0.9);
       const pageWidth = 210;
       const margin = 15;
       const maxWidth = pageWidth - margin * 2;
-      const aspect = tmpCanvas.height / tmpCanvas.width;
+      const aspect = canvasMini.height / canvasMini.width;
       const imgWidth = maxWidth;
       const imgHeight = imgWidth * aspect;
 
-      if (y + imgHeight + 10 > 287) {
-        doc.addPage();
-        y = 15;
-      }
-
-      doc.setFontSize(11);
-      doc.text(label, margin, y);
-      y += 4;
-
-      doc.addImage(imgData, 'PNG', margin, y, imgWidth, imgHeight);
-      y += imgHeight + 8;
+      doc.addImage(imgDataMini, 'PNG', margin, y, imgWidth, imgHeight);
+    } catch (e) {
+      console.error('Mini map to PDF error:', e);
     }
-
-    // ===== Wykresy =====
-    addChartImage('chart-volt-temp',   'Temperature vs time');
-    addChartImage('chart-hvel',        'Horizontal speed vs time');
-    addChartImage('chart-env',         'Environmental data (T, RH, p)');
-    addChartImage('chart-wind-profile','Wind profile');
-    addChartImage('chart-density',     'Air density vs altitude');
-    addChartImage('chart-signal-temp', 'RSSI and supply voltage vs temperature');
-
-    // ===== Mini-mapa – trasa lotu =====
-    const miniEl = document.getElementById('mini-map');
-    if (miniEl) {
-      if (y + 70 > 287) {
-        doc.addPage();
-        y = 15;
-      }
-      doc.setFontSize(11);
-      doc.text('Flight path (mini map)', 15, y);
-      y += 4;
-
-      try {
-        const canvasMini = await html2canvas(miniEl, { useCORS: true, scale: 2 });
-        const imgDataMini = canvasMini.toDataURL('image/png', 0.9);
-        const pageWidth = 210;
-        const margin = 15;
-        const maxWidth = pageWidth - margin * 2;
-        const aspect = canvasMini.height / canvasMini.width;
-        const imgWidth = maxWidth;
-        const imgHeight = imgWidth * aspect;
-
-        doc.addImage(imgDataMini, 'PNG', margin, y, imgWidth, imgHeight);
-      } catch (e) {
-        console.error('Mini map to PDF error:', e);
-      }
-    }
-
-    doc.save(`sonde_${s.id}_report.pdf`);
   }
+
+  doc.save(`sonde_${s.id}_report.pdf`);
+}
+
 
   // ======= Boot =======
   window.addEventListener('DOMContentLoaded', () => {
