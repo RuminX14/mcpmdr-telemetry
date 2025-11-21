@@ -56,6 +56,8 @@
         <button class="tab active" data-view="telemetry">Telemetria</button>
         <button class="tab" data-view="charts" data-i18n="charts_title">Dane graficzne</button>
       </div>
+      <!-- NOWY PRZYCISK RAPORTU PDF -->
+      <button id="btn-pdf-report" class="btn small">Raport PDF</button>
       <div class="lang">
         <button class="btn ghost small" data-lang="pl">PL</button>
         <button class="btn ghost small" data-lang="en">EN</button>
@@ -85,18 +87,7 @@
       <!-- Charts view -->
       <section id="view-charts" class="view view-charts">
         <div class="charts-scroll">
-          <!-- 1. Trasa lotu (mini-mapa) – NA GÓRZE -->
-          <div class="card">
-            <div class="card-head">
-              <span>Trasa lotu (mini-mapa)</span>
-              <button class="btn icon fullscreen-toggle" title="Pełny ekran">⤢</button>
-            </div>
-            <div class="card-body mini-map-body">
-              <div id="mini-map"></div>
-            </div>
-          </div>
-
-          <!-- 2. Temperatura w czasie -->
+          <!-- 1. Temperatura w czasie -->
           <div class="card">
             <div class="card-head">
               <span>Temperatura w czasie</span>
@@ -107,7 +98,7 @@
             </div>
           </div>
 
-          <!-- 3. Liczba satelitów GNSS w czasie -->
+          <!-- 2. Liczba satelitów GNSS w czasie -->
           <div class="card">
             <div class="card-head">
               <span>Liczba satelitów GNSS w czasie</span>
@@ -118,7 +109,7 @@
             </div>
           </div>
 
-          <!-- 4. Prędkość pozioma w czasie -->
+          <!-- 3. Prędkość pozioma w czasie -->
           <div class="card">
             <div class="card-head">
               <span>Prędkość pozioma w czasie</span>
@@ -129,7 +120,7 @@
             </div>
           </div>
 
-          <!-- 5. Profil wiatru -->
+          <!-- 4. Profil wiatru -->
           <div class="card">
             <div class="card-head">
               <span>Profil wiatru (prędkość i kierunek vs wysokość)</span>
@@ -140,7 +131,7 @@
             </div>
           </div>
 
-          <!-- 6. Gęstość powietrza vs wysokość -->
+          <!-- 5. Gęstość powietrza vs wysokość -->
           <div class="card">
             <div class="card-head">
               <span>Gęstość powietrza vs wysokość</span>
@@ -151,7 +142,7 @@
             </div>
           </div>
 
-          <!-- 7. RSSI i napięcie vs temperatura -->
+          <!-- 6. RSSI i napięcie vs temperatura -->
           <div class="card">
             <div class="card-head">
               <span>RSSI i napięcie vs temperatura</span>
@@ -162,7 +153,7 @@
             </div>
           </div>
 
-          <!-- 8. Wskaźnik stabilności atmosfery -->
+          <!-- 7. Wskaźnik stabilności atmosfery -->
           <div class="card">
             <div class="card-head">
               <span>Stabilność atmosfery</span>
@@ -173,7 +164,7 @@
             </div>
           </div>
 
-          <!-- 9. Dane środowiskowe (T, RH, p) – szeroka karta na dole -->
+          <!-- 8. Dane środowiskowe (T, RH, p) – szeroka karta na dole -->
           <div class="card wide">
             <div class="card-head">
               <span>Dane środowiskowe (T, RH, p)</span>
@@ -181,6 +172,17 @@
             </div>
             <div class="card-body">
               <canvas id="chart-env"></canvas>
+            </div>
+          </div>
+
+          <!-- 9. Trasa lotu (mini-mapa) -->
+          <div class="card">
+            <div class="card-head">
+              <span>Trasa lotu (mini-mapa)</span>
+              <button class="btn icon fullscreen-toggle" title="Pełny ekran">⤢</button>
+            </div>
+            <div class="card-body mini-map-body">
+              <div id="mini-map"></div>
             </div>
           </div>
         </div>
@@ -195,6 +197,10 @@
   ></script>
   <script
     src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
+  ></script>
+  <!-- NOWA BIBLIOTEKA DO PDF -->
+  <script
+    src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"
   ></script>
   <script src="assets/app.js"></script>
 </body>
