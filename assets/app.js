@@ -351,12 +351,6 @@
       miniCard.classList.add('chart-card', 'mini-map-card');
     }
 
-    // PRZYCISK RAPORTU PDF
-    const btnPdf = $('#btn-pdf-report');
-    if (btnPdf) {
-      btnPdf.addEventListener('click', generatePdfReportForActiveSonde);
-    }
-
     // Początkowy widok
     $('#view-telemetry').classList.add('show');
   }
@@ -1644,121 +1638,6 @@
     `;
   }
 
-  // ======= Raport PDF dla aktywnej sondy =======
-  function formatDateTime(dt) {
-    if (!dt) return '—';
-    const d = new Date(dt);
-    const pad = n => n.toString().padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
-           `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-  }
-
-  function generatePdfReportForActiveSonde() {
-    const s = state.sondes.get(state.activeId);
-    if (!s) {
-      alert('Brak wybranej sondy – wybierz sondę z listy.');
-      return;
-    }
-    if (!s.history || !s.history.length) {
-      alert('Brak historii danych dla tej sondy – raport nie może zostać wygenerowany.');
-      return;
-    }
-
-    if (!window.jspdf || !window.jspdf.jsPDF) {
-      alert('Biblioteka jsPDF nie jest załadowana – nie można wygenerować PDF.');
-      return;
-    }
-
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-
-    const h = s.history.slice().sort((a, b) => a.time - b.time);
-    const start = h[0];
-    const end = h[h.length - 1];
-
-    let maxAlt = null;
-    let minTemp = null;
-    let maxTemp = null;
-    h.forEach(p => {
-      if (Number.isFinite(p.alt)) {
-        if (maxAlt == null || p.alt > maxAlt) maxAlt = p.alt;
-      }
-      if (Number.isFinite(p.temp)) {
-        if (minTemp == null || p.temp < minTemp) minTemp = p.temp;
-        if (maxTemp == null || p.temp > maxTemp) maxTemp = p.temp;
-      }
-    });
-
-    const title = 'Raport radiosondy';
-    const sub = `${s.type || ''} ${s.id}`.trim();
-
-    let y = 15;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(18);
-    doc.text(title, 105, y, { align: 'center' });
-
-    y += 8;
-    doc.setFontSize(14);
-    doc.text(sub || 'Nieznana sonda', 105, y, { align: 'center' });
-
-    y += 10;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(11);
-
-    const line = txt => {
-      const maxWidth = 180;
-      const lines = doc.splitTextToSize(txt, maxWidth);
-      lines.forEach(l => {
-        if (y > 280) {
-          doc.addPage();
-          y = 15;
-        }
-        doc.text(l, 15, y);
-        y += 5;
-      });
-    };
-
-    line(`Status: ${s.status === 'active' ? 'aktywna' : 'zakończona'}${s.stabilityClass ? ' — ' + s.stabilityClass : ''}`);
-    line(`Czas ostatniej aktualizacji: ${formatDateTime(s.time)}`);
-    line(`Czas startu (pierwszy punkt): ${formatDateTime(start.time)}`);
-    line(`Czas końca (ostatni punkt):   ${formatDateTime(end.time)}`);
-
-    y += 2;
-    line('--- Parametry bieżące ---');
-    line(`Wysokość: ${Number.isFinite(s.alt) ? s.alt.toFixed(0) + ' m' : '—'}`);
-    line(`Temperatura: ${Number.isFinite(s.temp) ? s.temp.toFixed(1) + ' °C' : '—'}`);
-    line(`Punkt rosy: ${Number.isFinite(s.dewPoint) ? s.dewPoint.toFixed(1) + ' °C' : '—'}`);
-    line(`Wilgotność względna: ${Number.isFinite(s.humidity) ? s.humidity.toFixed(0) + ' %' : '—'}`);
-    line(`Ciśnienie: ${Number.isFinite(s.pressure) ? s.pressure.toFixed(1) + ' hPa' : '—'}`);
-    line(`Odległość od RX: ${Number.isFinite(s.distanceToRx) ? s.distanceToRx.toFixed(0) + ' m' : '—'}`);
-    line(`Kierunek lotu: ${Number.isFinite(s.horizontalCourse) ? s.horizontalCourse.toFixed(0) + '°' : '—'}`);
-    line(`Prędkość pozioma: ${Number.isFinite(s.horizontalSpeed) ? s.horizontalSpeed.toFixed(1) + ' m/s' : '—'}`);
-    line(`Prędkość pionowa: ${Number.isFinite(s.verticalSpeed) ? s.verticalSpeed.toFixed(1) + ' m/s' : '—'}`);
-
-    y += 2;
-    line('--- Parametry termodynamiczne ---');
-    line(`Temperatura potencjalna θ: ${Number.isFinite(s.theta) ? s.theta.toFixed(1) + ' K' : '—'}`);
-    line(`Poziom kondensacji LCL: ${Number.isFinite(s.lclHeight) ? s.lclHeight.toFixed(0) + ' m' : '—'}`);
-    line(`Wysokość izotermy 0 °C: ${Number.isFinite(s.zeroIsoHeight) ? s.zeroIsoHeight.toFixed(0) + ' m' : '—'}`);
-    line(`Średni gradient Γ: ${Number.isFinite(s.stabilityIndex) ? s.stabilityIndex.toFixed(1) + ' K/km' : '—'}`);
-
-    y += 2;
-    line('--- Ekstrema z przebiegu ---');
-    line(`Maksymalna wysokość: ${maxAlt != null ? maxAlt.toFixed(0) + ' m' : '—'}`);
-    line(`Minimalna temperatura: ${minTemp != null ? minTemp.toFixed(1) + ' °C' : '—'}`);
-    line(`Maksymalna temperatura: ${maxTemp != null ? maxTemp.toFixed(1) + ' °C' : '—'}`);
-    line(`Liczba próbek w historii: ${h.length}`);
-
-    y += 2;
-    line('--- Położenie ---');
-    line(`Ostatnia pozycja: ${Number.isFinite(s.lat) && Number.isFinite(s.lon)
-      ? s.lat.toFixed(5) + '°, ' + s.lon.toFixed(5) + '°'
-      : '—'}`);
-
-    const fileName = `raport_${(s.type || 'sonda')}_${s.id || ''}.pdf`.replace(/\s+/g, '_');
-    doc.save(fileName);
-  }
-
   // ======= Boot =======
   window.addEventListener('DOMContentLoaded', () => {
     initLogin();
@@ -1767,3 +1646,4 @@
     restartFetching();
   });
 })();
+
