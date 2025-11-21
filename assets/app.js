@@ -345,7 +345,7 @@
       }
     });
 
-    // Mini-mapa – oznacz kartę odpowiednimi klasami (do powiększenia i ustawienia jako pierwsza)
+    // Mini-mapa – oznacz kartę odpowiednimi klasami
     const miniCard = document.getElementById('mini-map')?.closest('.card');
     if (miniCard) {
       miniCard.classList.add('chart-card', 'mini-map-card');
@@ -797,7 +797,6 @@
     }
 
     // BURST – pojawia się dopiero, gdy sonda ZACZNIE SPADAĆ
-    // tzn. aktualna wys. < wys. maksymalnej (z lekką histerezą)
     const HYST = 10; // 10 m
     const canShowBurst =
       apex &&
@@ -820,7 +819,6 @@
         s.burstMarker.setLatLng(latlng2);
       }
     } else {
-      // jeśli jeszcze nie spada, to burst chowamy
       if (s.burstMarker) {
         s.burstMarker.remove();
         s.burstMarker = null;
@@ -980,6 +978,56 @@
     };
   }
 
+  // ========= Plugin: etykiety wysokości nad osią czasu =========
+  const altitudeTopAxisPlugin = {
+    id: 'altitudeTopAxis',
+    afterDraw(chart) {
+      const opts = chart.options?.plugins?.altitudeTopAxis;
+      if (!opts || !opts.enabled) return;
+
+      const datasetIndex = Number.isInteger(opts.datasetIndex) ? opts.datasetIndex : 0;
+      const ds = chart.data?.datasets?.[datasetIndex];
+      const scaleX = chart.scales?.x;
+      const area = chart.chartArea;
+
+      if (!ds || !Array.isArray(ds.data) || !ds.data.length) return;
+      if (!scaleX || !scaleX.ticks || !scaleX.ticks.length) return;
+      if (!area) return;
+
+      const ctx = chart.ctx;
+      ctx.save();
+      ctx.font = '10px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillStyle = '#e6ebff';
+
+      const topY = area.top - 2;
+
+      for (const tick of scaleX.ticks) {
+        const xVal = tick.value;
+
+        let bestAlt = null;
+        let bestDx = Infinity;
+
+        for (const p of ds.data) {
+          if (!p || typeof p.x === 'undefined' || !Number.isFinite(p.alt)) continue;
+          const dx = Math.abs(p.x - xVal);
+          if (dx < bestDx) {
+            bestDx = dx;
+            bestAlt = p.alt;
+          }
+        }
+
+        if (!Number.isFinite(bestAlt)) continue;
+
+        const xPix = scaleX.getPixelForValue(xVal);
+        ctx.fillText(bestAlt.toFixed(0) + ' m', xPix, topY);
+      }
+
+      ctx.restore();
+    }
+  };
+
   function resizeCharts() {
     Object.values(state.charts).forEach(c => c && c.resize());
     if (state.miniMap) {
@@ -1075,9 +1123,14 @@
           },
           plugins: {
             tooltip: tooltipWithAltitude(),
-            legend: { labels: { color: '#e6ebff' } }
+            legend: { labels: { color: '#e6ebff' } },
+            altitudeTopAxis: {
+              enabled: true,
+              datasetIndex: 0
+            }
           }
-        }
+        },
+        plugins: [altitudeTopAxisPlugin]
       }));
       if (!chart) return;
 
@@ -1089,7 +1142,7 @@
       chart.update('none');
     })();
 
-    // 2) GNSS – liczba satelitów w czasie (na razie placeholder – dane z TTGO w przyszłości)
+    // 2) GNSS – liczba satelitów w czasie (placeholder)
     (function () {
       const id = 'chart-gnss';
       const chart = ensureChart(id, () => ({
@@ -1121,8 +1174,6 @@
       }));
       if (!chart) return;
 
-      // Na razie brak danych GNSS z radiosondy.info / TTGO – wykres się renderuje,
-      // ale jest pusty, dopóki nie zasilimy go realnymi wartościami.
       chart.data.datasets[0].data = [];
       chart.update('none');
     })();
@@ -1170,9 +1221,14 @@
           },
           plugins: {
             tooltip: tooltipWithAltitude(),
-            legend: { labels: { color: '#e6ebff' } }
+            legend: { labels: { color: '#e6ebff' } },
+            altitudeTopAxis: {
+              enabled: true,
+              datasetIndex: 0   // bierzemy temperaturę jako referencję do wysokości
+            }
           }
-        }
+        },
+        plugins: [altitudeTopAxisPlugin]
       }));
       if (!chart) return;
 
@@ -1218,9 +1274,14 @@
           },
           plugins: {
             tooltip: tooltipWithAltitude(),
-            legend: { labels: { color: '#e6ebff' } }
+            legend: { labels: { color: '#e6ebff' } },
+            altitudeTopAxis: {
+              enabled: true,
+              datasetIndex: 0
+            }
           }
-        }
+        },
+        plugins: [altitudeTopAxisPlugin]
       }));
       if (!chart) return;
 
@@ -1243,7 +1304,7 @@
       chart.update('none');
     })();
 
-    // 4b) Profil wiatru – prędkość i kierunek vs wysokość (wznoszenie / opadanie)
+    // 4b) Profil wiatru – prędkość i kierunek vs wysokość
     (function () {
       const id = 'chart-wind-profile';
       const chart = ensureChart(id, () => ({
@@ -1330,7 +1391,6 @@
       if (s && s.history.length >= 2) {
         const ordered = s.history.slice().sort((a, b) => a.time - b.time);
 
-        // znajdź indeks maksimum wysokości (apex)
         let apexIndex = -1;
         let maxAlt = -Infinity;
         for (let i = 0; i < ordered.length; i++) {
@@ -1379,7 +1439,6 @@
       chart.data.datasets[2].data = dirUp;
       chart.data.datasets[3].data = dirDown;
 
-      // AUTOSKALOWANIE osi prędkości xSpd → brak „wyjeżdżania” za prawą krawędź
       const allSpeeds = [...speedUp, ...speedDown];
       let maxSpeed = 0;
       for (const p of allSpeeds) {
@@ -1522,7 +1581,6 @@
     const card = canvas.closest('.card');
     if (!card) return;
 
-    // chowamy sam canvas (nie chcemy wykresu)
     canvas.style.display = 'none';
 
     let box = card.querySelector('.stability-box');
@@ -1533,7 +1591,6 @@
       body.appendChild(box);
     }
 
-    // brak aktywnej sondy lub brak danych
     if (!s || !Number.isFinite(s.stabilityIndex)) {
       box.className = 'stability-box';
       box.innerHTML = `
@@ -1556,7 +1613,6 @@
     const gamma = s.stabilityIndex;     // K/km
     const cls = s.stabilityClass || '—';
 
-    // mapujemy Γ na 0–100% (0…12 K/km)
     const percent = Math.max(0, Math.min(100, (gamma / 12) * 100));
 
     let stateClass = '';
