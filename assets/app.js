@@ -187,84 +187,6 @@
     return { gamma: g, cls };
   }
 
-  // Przybliżone wyliczenie CAPE / CIN z profilu sondy
-  // Bardzo uproszczona metoda: paczka startuje z powierzchni,
-  // do poziomu kondensacji idzie suchą adiabatą (~9.8 K/km),
-  // powyżej przyjmujemy wilgotną adiabatę ~6 K/km.
-  // Wynik traktujemy jako wskaźnik (rząd wielkości), nie jako dokładny sounding.
-  function computeCapeCin(history) {
-    const g = 9.81;
-
-    const pts = history
-      .filter(h => Number.isFinite(h.temp) && Number.isFinite(h.alt))
-      .slice()
-      .sort((a, b) => a.alt - b.alt);
-
-    if (pts.length < 2) return { cape: null, cin: null };
-
-    const sfc = pts[0];
-    const T0 = sfc.temp;
-    const RH0 = sfc.humidity;
-    const Td0 = dewPoint(T0, RH0);
-    const lcl = lclHeight(T0, Td0);
-
-    const z0 = sfc.alt;
-    const Rdry = 9.8;   // K/km
-    const Rmoist = 6.0; // K/km
-
-    function parcelTemp(z) {
-      const dz = (z - z0) / 1000; // km
-      if (!Number.isFinite(dz)) return null;
-
-      if (!Number.isFinite(lcl) || z <= lcl) {
-        return T0 - Rdry * dz;
-      } else {
-        const dzDry = (lcl - z0) / 1000;
-        const T_lcl = T0 - Rdry * dzDry;
-        const dzMoist = (z - lcl) / 1000;
-        return T_lcl - Rmoist * dzMoist;
-      }
-    }
-
-    let cape = 0;
-    let cin = 0;
-    let any = false;
-
-    for (let i = 1; i < pts.length; i++) {
-      const a = pts[i - 1];
-      const b = pts[i];
-      if (!Number.isFinite(a.alt) || !Number.isFinite(b.alt)) continue;
-      if (!Number.isFinite(b.temp)) continue;
-
-      const zMid = (a.alt + b.alt) / 2;
-      const Tenv = b.temp;
-      const Tpar = parcelTemp(zMid);
-      if (!Number.isFinite(Tenv) || !Number.isFinite(Tpar)) continue;
-
-      const Tk = Tenv + 273.15;
-      if (!Number.isFinite(Tk) || Tk <= 0) continue;
-
-      const dT = Tpar - Tenv;
-      const B = g * dT / Tk; // przybliżona siła wyporu [m/s^2]
-      const dz = b.alt - a.alt;
-      const dArea = B * dz;  // [J/kg] przybliżenie
-
-      if (dArea > 0) {
-        cape += dArea;
-      } else {
-        cin += -dArea;
-      }
-      any = true;
-    }
-
-    if (!any) return { cape: null, cin: null };
-
-    return {
-      cape: Number.isFinite(cape) && cape > 0 ? cape : 0,
-      cin: Number.isFinite(cin) && cin > 0 ? cin : 0
-    };
-  }
-
   // ======= Login =======
   function initLogin() {
     const overlay = $('#login-overlay');
@@ -727,8 +649,6 @@
         status: 'active',
         stabilityIndex: null,
         stabilityClass: null,
-        cape: null,
-        cin: null,
         history: [],
         marker: null,
         polyline: null,
@@ -817,10 +737,6 @@
     const stab = computeStability(s.history);
     s.stabilityIndex = stab.gamma;
     s.stabilityClass = stab.cls;
-
-    const capeCin = computeCapeCin(s.history);
-    s.cape = capeCin.cape;
-    s.cin = capeCin.cin;
 
     ensureMapObjects(s);
     updateLaunchBurstMarkers(s);
@@ -1670,8 +1586,7 @@
 
     // 7) Wskaźnik stabilności atmosfery – karta z paskiem zamiast wykresu
     updateStabilityBox(s);
-
-    // 8) Karta CAPE / CIN na dole zakładki "Dane graficzne"
+    // 8) Karta CAPE / CIN – pod wykresami
     renderCapeCinCard(s);
   }
 
@@ -1739,76 +1654,99 @@
     `;
   }
 
-  // ======= Karta CAPE / CIN w zakładce danych graficznych =======
+  // ======= Karta CAPE / CIN – pod wykresami =======
   function renderCapeCinCard(s) {
-    // kontener z kartami wykresów
-    const grid =
-      document.querySelector('#view-charts .charts-grid') ||
-      document.querySelector('#view-charts .cards-grid') ||
-      document.querySelector('#view-charts .grid') ||
-      document.getElementById('view-charts');
+    const chartsView = document.getElementById('view-charts');
+    if (!chartsView) return;
 
-    if (!grid) return;
-
+    // Szukamy (albo tworzymy) dedykowaną kartę na samym dole siatki wykresów
     let card = document.getElementById('cape-cin-card');
+    if (!card) {
+      const grid = chartsView.querySelector('.charts-grid') || chartsView;
+      card = document.createElement('div');
+      card.id = 'cape-cin-card';
+      card.className = 'card chart-card cape-cin-card';
+      grid.appendChild(card);
+    }
 
-    if (!s || !Number.isFinite(s.cape) || !Number.isFinite(s.cin)) {
-      // brak danych – jeśli karta istnieje, pokaż stan "brak"
-      if (!card) {
-        card = document.createElement('div');
-        card.id = 'cape-cin-card';
-        card.className = 'card';
-        grid.appendChild(card);
-      }
+    if (!s) {
       card.innerHTML = `
-        <div class="card-header">
-          <div class="card-title">Energia konwekcji (CAPE/CIN)</div>
-        </div>
+        <div class="card-header">Energia konwekcji (CAPE / CIN)</div>
         <div class="card-body">
-          <div class="sub">Brak wystarczających danych z radiosondy.</div>
+          <p>Brak wybranej aktywnej sondy.</p>
         </div>
       `;
       return;
     }
 
-    if (!card) {
-      card = document.createElement('div');
-      card.id = 'cape-cin-card';
-      card.className = 'card';
-      grid.appendChild(card);
+    const cape = s.cape;
+    const cin = s.cin;
+    const gamma = s.stabilityIndex;
+    const cls = s.stabilityClass || '—';
+
+    // Prosta klasyfikacja wielkości CAPE
+    let capeLevel = 'brak danych';
+    if (Number.isFinite(cape)) {
+      if (cape < 100) capeLevel = 'bardzo mała';
+      else if (cape < 500) capeLevel = 'mała';
+      else if (cape < 1000) capeLevel = 'umiarkowana';
+      else if (cape < 2000) capeLevel = 'duża';
+      else capeLevel = 'bardzo duża';
     }
 
-    const cape = s.cape || 0;
-    const cin = s.cin || 0;
+    // Prosta klasyfikacja siły "czapy" (CIN)
+    let cinLevel = 'brak danych';
+    if (Number.isFinite(cin)) {
+      const absCin = Math.abs(cin);
+      if (absCin < 25) cinLevel = 'słaba blokada';
+      else if (absCin < 75) cinLevel = 'umiarkowana blokada';
+      else cinLevel = 'silna blokada';
+    }
 
-    let capeLevel = 'bardzo mała';
-    if (cape >= 1500) capeLevel = 'bardzo duża';
-    else if (cape >= 700) capeLevel = 'duża';
-    else if (cape >= 300) capeLevel = 'umiarkowana';
-    else if (cape >= 100) capeLevel = 'mała';
+    // Krótki opis słowny potencjału burzowego
+    let summary;
+    if (!Number.isFinite(cape)) {
+      summary = 'Brak pełnych danych do obliczenia CAPE/CIN – wykorzystano jedynie wskaźnik stabilności.';
+    } else if (cape < 100) {
+      summary = 'Konwekcja praktycznie wykluczona.';
+    } else if (cape < 500) {
+      summary = 'Słaba, lokalna konwekcja możliwa.';
+    } else if (cape < 1000) {
+      summary = 'Umiarkowany potencjał burzowy.';
+    } else if (cape < 2000) {
+      summary = 'Duży potencjał burzowy, możliwe silniejsze komórki.';
+    } else {
+      summary = 'Bardzo duży potencjał burzowy – środowisko sprzyjające silnym burzom.';
+    }
 
-    let cinDesc = 'prawie brak hamowania';
-    if (cin > 200) cinDesc = 'silne hamowanie (CIN)';
-    else if (cin > 75) cinDesc = 'umiarkowane hamowanie';
-    else if (cin > 25) cinDesc = 'słabe hamowanie';
+    const gammaStr = Number.isFinite(gamma) ? gamma.toFixed(1) + ' K/km' : '—';
 
     card.innerHTML = `
-      <div class="card-header">
-        <div class="card-title">Energia konwekcji (CAPE / CIN)</div>
-      </div>
-      <div class="card-body">
-        <div class="cape-row">
-          <div class="label">CAPE [J/kg]</div>
-          <div class="value">${cape.toFixed(0)}</div>
-          <div class="tag">${capeLevel}</div>
+      <div class="card-header">Energia konwekcji (CAPE / CIN)</div>
+      <div class="card-body cape-cin-body">
+        <div class="cape-cin-main">
+          <div class="cape-cin-block">
+            <div class="cape-cin-label">CAPE</div>
+            <div class="cape-cin-value">
+              ${Number.isFinite(cape) ? cape.toFixed(0) + ' J/kg' : '—'}
+            </div>
+            <div class="cape-cin-level">${capeLevel}</div>
+          </div>
+          <div class="cape-cin-block">
+            <div class="cape-cin-label">CIN</div>
+            <div class="cape-cin-value">
+              ${Number.isFinite(cin) ? cin.toFixed(0) + ' J/kg' : '—'}
+            </div>
+            <div class="cape-cin-level">${cinLevel}</div>
+          </div>
         </div>
-        <div class="cape-row">
-          <div class="label">CIN [J/kg]</div>
-          <div class="value">${cin.toFixed(0)}</div>
-          <div class="tag tag--cin">${cinDesc}</div>
-        </div>
-        <div class="sub" style="margin-top:8px;font-size:11px;opacity:0.8">
-          Obliczenia przybliżone na podstawie ostatniego radiosondażu (paczka z warstwy przyziemnej).
+        <div class="cape-cin-extra">
+          <div><strong>Stabilność (Γ):</strong> ${gammaStr} (${cls})</div>
+          <div><strong>Szybka ocena:</strong> ${summary}</div>
+          <div class="cape-cin-note">
+            Uwaga: wartości CAPE/CIN są w tej chwili prototypowe – mogą być rozwinięte o pełne obliczenia z profilu
+            radiosondażu.
+          </div>
         </div>
       </div>
     `;
@@ -1987,4 +1925,3 @@
     restartFetching();
   });
 })();
-
