@@ -994,6 +994,8 @@
       if (!opts || !opts.enabled) return;
 
       const datasetIndex = Number.isInteger(opts.datasetIndex) ? opts.datasetIndex : 0;
+      const yOffset = Number.isFinite(opts.yOffsetPx) ? opts.yOffsetPx : 8; // przesunięcie w dół od górnej krawędzi wykresu
+
       const ds = chart.data?.datasets?.[datasetIndex];
       const scaleX = chart.scales?.x;
       const area = chart.chartArea;
@@ -1009,7 +1011,8 @@
       ctx.textBaseline = 'bottom';
       ctx.fillStyle = '#e6ebff';
 
-      const topY = area.top - 2;
+      // trochę niżej niż górna krawędź obszaru wykresu, żeby odsunąć się od legendy
+      const topY = area.top + yOffset;
 
       for (const tick of scaleX.ticks) {
         const xVal = tick.value;
@@ -1131,10 +1134,11 @@
           },
           plugins: {
             tooltip: tooltipWithAltitude(),
-            legend: { labels: { color: '#e6ebff' }, padding: 20 },
+            legend: { labels: { color: '#e6ebff' } },
             altitudeTopAxis: {
               enabled: true,
-              datasetIndex: 0
+              datasetIndex: 0,
+              yOffsetPx: 8
             }
           }
         },
@@ -1176,7 +1180,7 @@
           },
           plugins: {
             tooltip: tooltipWithAltitude(),
-            legend: { labels: { color: '#e6ebff' }, padding: 20 }
+            legend: { labels: { color: '#e6ebff' } }
           }
         }
       }));
@@ -1229,10 +1233,11 @@
           },
           plugins: {
             tooltip: tooltipWithAltitude(),
-            legend: { labels: { color: '#e6ebff' }, padding: 20 },
+            legend: { labels: { color: '#e6ebff' } },
             altitudeTopAxis: {
               enabled: true,
-              datasetIndex: 0   // referencja: temperatura
+              datasetIndex: 0,   // referencja: temperatura
+              yOffsetPx: 8
             }
           }
         },
@@ -1282,10 +1287,11 @@
           },
           plugins: {
             tooltip: tooltipWithAltitude(),
-            legend: { labels: { color: '#e6ebff' }, padding: 20 },
+            legend: { labels: { color: '#e6ebff' } },
             altitudeTopAxis: {
               enabled: true,
-              datasetIndex: 0
+              datasetIndex: 0,
+              yOffsetPx: 8
             }
           }
         },
@@ -1385,7 +1391,7 @@
           },
           plugins: {
             tooltip: tooltipWithAltitude(),
-            legend: { labels: { color: '#e6ebff' }, padding: 20 }
+            legend: { labels: { color: '#e6ebff' } }
           }
         }
       }));
@@ -1497,7 +1503,7 @@
           },
           plugins: {
             tooltip: tooltipWithAltitude(),
-            legend: { labels: { color: '#e6ebff' }, padding: 20 }
+            legend: { labels: { color: '#e6ebff' } }
           }
         }
       }));
@@ -1559,7 +1565,7 @@
           },
           plugins: {
             tooltip: tooltipWithAltitude(),
-            legend: { labels: { color: '#e6ebff' }, padding: 20 }
+            legend: { labels: { color: '#e6ebff' } }
           }
         }
       }));
@@ -1646,146 +1652,105 @@
     `;
   }
 
-// ======= Raport PDF (bez polskich znakow, z wykresami i minimapa) =======
-async function generatePdfReport() {
-  // 1. Znajdz jsPDF w roznych wariantach (bundle / global)
-  const jsPdfCtor =
-    (window.jspdf && window.jspdf.jsPDF) ||
-    window.jsPDF ||
-    null;
+  // ======= Raport PDF (bez polskich znakow, z wykresami i minimapa) =======
+  async function generatePdfReport() {
+    // 1. Znajdz jsPDF w roznych wariantach (bundle / global)
+    const jsPdfCtor =
+      (window.jspdf && window.jspdf.jsPDF) ||
+      window.jsPDF ||
+      null;
 
-  if (!jsPdfCtor || typeof html2canvas === 'undefined') {
-    alert('PDF generator not available (jsPDF / html2canvas missing).');
-    console.error('jsPdfCtor =', jsPdfCtor, 'html2canvas =', typeof html2canvas);
-    return;
-  }
-
-  const s = state.sondes.get(state.activeId);
-  if (!s) {
-    alert('No active sonde selected.');
-    return;
-  }
-
-  // 2. Na czas generowania PDF wymuszamy widok wykresow
-  const viewTelemetry = document.getElementById('view-telemetry');
-  const viewCharts = document.getElementById('view-charts');
-  const chartsWasShown = viewCharts && viewCharts.classList.contains('show');
-
-  if (viewTelemetry && viewCharts) {
-    viewTelemetry.classList.remove('show');
-    viewCharts.classList.add('show');
-    // upewnij sie ze layout sie przeliczy i wykresy sa narysowane
-    renderCharts();
-    await new Promise(r => setTimeout(r, 80));
-  }
-
-  const doc = new jsPdfCtor('p', 'mm', 'a4');
-  let y = 15;
-
-  // Naglowek (ASCII only)
-  doc.setFontSize(16);
-  doc.text('Radiosonde telemetry report', 105, y, { align: 'center' });
-  y += 10;
-
-  doc.setFontSize(11);
-  const timeStr = s.time ? new Date(s.time).toLocaleString() : '-';
-  const statusAscii = (s.status === 'active') ? 'Active' : 'Finished';
-
-  let stabAscii = '-';
-  switch (s.stabilityClass) {
-    case 'silnie chwiejna': stabAscii = 'Very unstable'; break;
-    case 'chwiejna':        stabAscii = 'Unstable';      break;
-    case 'obojętna':        stabAscii = 'Neutral';       break;
-    case 'stabilna':        stabAscii = 'Stable';        break;
-    case 'silnie stabilna': stabAscii = 'Very stable';   break;
-    default:                stabAscii = '-';
-  }
-
-  doc.text(`Sonde ID: ${s.id}`, 14, y); y += 6;
-  doc.text(`Type: ${s.type || '-'}`, 14, y); y += 6;
-  doc.text(`Last fix: ${timeStr}`, 14, y); y += 6;
-  doc.text(`Status: ${statusAscii}`, 14, y); y += 6;
-
-  doc.text(`Alt [m]: ${fmt(s.alt, 0)}`, 14, y); y += 6;
-  doc.text(`Temp [C]: ${fmt(s.temp, 1)}`, 14, y); y += 6;
-  doc.text(`Dew point [C]: ${fmt(s.dewPoint, 1)}`, 14, y); y += 6;
-  doc.text(`Pressure [hPa]: ${fmt(s.pressure, 1)}`, 14, y); y += 6;
-  doc.text(`RH [%]: ${fmt(s.humidity, 0)}`, 14, y); y += 6;
-  doc.text(`Vertical speed [m/s]: ${fmt(s.verticalSpeed, 1)}`, 14, y); y += 6;
-  doc.text(`Horizontal speed [m/s]: ${fmt(s.horizontalSpeed, 1)}`, 14, y); y += 6;
-  doc.text(`Distance to RX [m]: ${fmt(s.distanceToRx, 0)}`, 14, y); y += 6;
-  doc.text(`Theta potential [K]: ${fmt(s.theta, 1)}`, 14, y); y += 6;
-  doc.text(`Stability Gamma [K/km]: ${fmt(s.stabilityIndex, 1)}`, 14, y); y += 6;
-  doc.text(`Stability class: ${stabAscii}`, 14, y); y += 8;
-
-   // ===== Pomocnicza funkcja: canvas -> obrazek w PDF z ciemnym tlem =====
-  function addChartImageByCanvasId(canvasId, label) {
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) {
-      console.warn('Canvas not found for PDF:', canvasId);
+    if (!jsPdfCtor || typeof html2canvas === 'undefined') {
+      alert('PDF generator not available (jsPDF / html2canvas missing).');
+      console.error('jsPdfCtor =', jsPdfCtor, 'html2canvas =', typeof html2canvas);
       return;
     }
 
-    // offscreen na CIEMNYM tle, jak na stronie
-    const tmpCanvas = document.createElement('canvas');
-    tmpCanvas.width  = canvas.width;
-    tmpCanvas.height = canvas.height;
-    const ctx = tmpCanvas.getContext('2d');
-
-    // tu ustawiasz kolor tła wykresu w PDF:
-    ctx.fillStyle = '#050922';  // ciemny granat, możesz zmienić np. na #060b20
-    ctx.fillRect(0, 0, tmpCanvas.width, tmpCanvas.height);
-
-    // rysujemy wykres z oryginalnego canvasu na to tło
-    ctx.drawImage(canvas, 0, 0);
-
-    const imgData = tmpCanvas.toDataURL('image/png', 1.0);
-
-    const pageWidth = 210;
-    const margin = 15;
-    const maxWidth = pageWidth - margin * 2;
-    const aspect = tmpCanvas.height / tmpCanvas.width;
-    const imgWidth = maxWidth;
-    const imgHeight = imgWidth * aspect;
-
-    if (y + imgHeight + 10 > 287) {
-      doc.addPage();
-      y = 15;
+    const s = state.sondes.get(state.activeId);
+    if (!s) {
+      alert('No active sonde selected.');
+      return;
     }
 
-    doc.setFontSize(11);
-    doc.text(label, margin, y);
-    y += 4;
-    doc.addImage(imgData, 'PNG', margin, y, imgWidth, imgHeight);
-    y += imgHeight + 8;
-  }
+    // 2. Na czas generowania PDF wymuszamy widok wykresow
+    const viewTelemetry = document.getElementById('view-telemetry');
+    const viewCharts = document.getElementById('view-charts');
+    const chartsWasShown = viewCharts && viewCharts.classList.contains('show');
 
-  // ===== Wykresy =====
-  try { addChartImageByCanvasId('chart-volt-temp',   'Temperature vs time'); } catch (e) { console.error(e); }
-  try { addChartImageByCanvasId('chart-hvel',        'Horizontal speed vs time'); } catch (e) { console.error(e); }
-  try { addChartImageByCanvasId('chart-env',         'Environmental data (T, RH, p)'); } catch (e) { console.error(e); }
-  try { addChartImageByCanvasId('chart-wind-profile','Wind profile'); } catch (e) { console.error(e); }
-  try { addChartImageByCanvasId('chart-density',     'Air density vs altitude'); } catch (e) { console.error(e); }
-  try { addChartImageByCanvasId('chart-signal-temp', 'RSSI and supply voltage vs temperature'); } catch (e) { console.error(e); }
-
-  // ===== Mini-mapa – trasa lotu =====
-  const miniEl = document.getElementById('mini-map');
-  if (miniEl) {
-    if (y + 70 > 287) {
-      doc.addPage();
-      y = 15;
+    if (viewTelemetry && viewCharts) {
+      viewTelemetry.classList.remove('show');
+      viewCharts.classList.add('show');
+      // upewnij sie ze layout sie przeliczy i wykresy sa narysowane
+      renderCharts();
+      await new Promise(r => setTimeout(r, 80));
     }
-    doc.setFontSize(11);
-    doc.text('Flight path (mini map)', 15, y);
-    y += 4;
 
-    try {
-      const canvasMini = await html2canvas(miniEl, { useCORS: true, scale: 2 });
-      const imgDataMini = canvasMini.toDataURL('image/png', 0.9);
+    const doc = new jsPdfCtor('p', 'mm', 'a4');
+    let y = 15;
+
+    // Naglowek (ASCII only)
+    doc.setFontSize(16);
+    doc.text('Radiosonde telemetry report', 105, y, { align: 'center' });
+    y += 10;
+
+    doc.setFontSize(11);
+    const timeStr = s.time ? new Date(s.time).toLocaleString() : '-';
+    const statusAscii = (s.status === 'active') ? 'Active' : 'Finished';
+
+    let stabAscii = '-';
+    switch (s.stabilityClass) {
+      case 'silnie chwiejna': stabAscii = 'Very unstable'; break;
+      case 'chwiejna':        stabAscii = 'Unstable';      break;
+      case 'obojętna':        stabAscii = 'Neutral';       break;
+      case 'stabilna':        stabAscii = 'Stable';        break;
+      case 'silnie stabilna': stabAscii = 'Very stable';   break;
+      default:                stabAscii = '-';
+    }
+
+    doc.text(`Sonde ID: ${s.id}`, 14, y); y += 6;
+    doc.text(`Type: ${s.type || '-'}`, 14, y); y += 6;
+    doc.text(`Last fix: ${timeStr}`, 14, y); y += 6;
+    doc.text(`Status: ${statusAscii}`, 14, y); y += 6;
+
+    doc.text(`Alt [m]: ${fmt(s.alt, 0)}`, 14, y); y += 6;
+    doc.text(`Temp [C]: ${fmt(s.temp, 1)}`, 14, y); y += 6;
+    doc.text(`Dew point [C]: ${fmt(s.dewPoint, 1)}`, 14, y); y += 6;
+    doc.text(`Pressure [hPa]: ${fmt(s.pressure, 1)}`, 14, y); y += 6;
+    doc.text(`RH [%]: ${fmt(s.humidity, 0)}`, 14, y); y += 6;
+    doc.text(`Vertical speed [m/s]: ${fmt(s.verticalSpeed, 1)}`, 14, y); y += 6;
+    doc.text(`Horizontal speed [m/s]: ${fmt(s.horizontalSpeed, 1)}`, 14, y); y += 6;
+    doc.text(`Distance to RX [m]: ${fmt(s.distanceToRx, 0)}`, 14, y); y += 6;
+    doc.text(`Theta potential [K]: ${fmt(s.theta, 1)}`, 14, y); y += 6;
+    doc.text(`Stability Gamma [K/km]: ${fmt(s.stabilityIndex, 1)}`, 14, y); y += 6;
+    doc.text(`Stability class: ${stabAscii}`, 14, y); y += 8;
+
+    // ===== Pomocnicza funkcja: canvas -> obrazek w PDF z ciemnym tlem =====
+    function addChartImageByCanvasId(canvasId, label) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) {
+        console.warn('Canvas not found for PDF:', canvasId);
+        return;
+      }
+
+      // offscreen na CIEMNYM tle, jak na stronie
+      const tmpCanvas = document.createElement('canvas');
+      tmpCanvas.width  = canvas.width;
+      tmpCanvas.height = canvas.height;
+      const ctx = tmpCanvas.getContext('2d');
+
+      // kolor tła wykresu w PDF:
+      ctx.fillStyle = '#050922';  // ciemny granat
+      ctx.fillRect(0, 0, tmpCanvas.width, tmpCanvas.height);
+
+      // rysujemy wykres z oryginalnego canvasu na to tło
+      ctx.drawImage(canvas, 0, 0);
+
+      const imgData = tmpCanvas.toDataURL('image/png', 1.0);
+
       const pageWidth = 210;
       const margin = 15;
       const maxWidth = pageWidth - margin * 2;
-      const aspect = canvasMini.height / canvasMini.width;
+      const aspect = tmpCanvas.height / tmpCanvas.width;
       const imgWidth = maxWidth;
       const imgHeight = imgWidth * aspect;
 
@@ -1793,23 +1758,64 @@ async function generatePdfReport() {
         doc.addPage();
         y = 15;
       }
-      doc.addImage(imgDataMini, 'PNG', margin, y, imgWidth, imgHeight);
+
+      doc.setFontSize(11);
+      doc.text(label, margin, y);
+      y += 4;
+      doc.addImage(imgData, 'PNG', margin, y, imgWidth, imgHeight);
       y += imgHeight + 8;
-    } catch (e) {
-      console.error('Mini map to PDF error:', e);
+    }
+
+    // ===== Wykresy =====
+    try { addChartImageByCanvasId('chart-volt-temp',   'Temperature vs time'); } catch (e) { console.error(e); }
+    try { addChartImageByCanvasId('chart-hvel',        'Horizontal speed vs time'); } catch (e) { console.error(e); }
+    try { addChartImageByCanvasId('chart-env',         'Environmental data (T, RH, p)'); } catch (e) { console.error(e); }
+    try { addChartImageByCanvasId('chart-wind-profile','Wind profile'); } catch (e) { console.error(e); }
+    try { addChartImageByCanvasId('chart-density',     'Air density vs altitude'); } catch (e) { console.error(e); }
+    try { addChartImageByCanvasId('chart-signal-temp', 'RSSI and supply voltage vs temperature'); } catch (e) { console.error(e); }
+
+    // ===== Mini-mapa – trasa lotu =====
+    const miniEl = document.getElementById('mini-map');
+    if (miniEl) {
+      if (y + 70 > 287) {
+        doc.addPage();
+        y = 15;
+      }
+      doc.setFontSize(11);
+      doc.text('Flight path (mini map)', 15, y);
+      y += 4;
+
+      try {
+        const canvasMini = await html2canvas(miniEl, { useCORS: true, scale: 2 });
+        const imgDataMini = canvasMini.toDataURL('image/png', 0.9);
+        const pageWidth = 210;
+        const margin = 15;
+        const maxWidth = pageWidth - margin * 2;
+        const aspect = canvasMini.height / canvasMini.width;
+        const imgWidth = maxWidth;
+        const imgHeight = imgWidth * aspect;
+
+        if (y + imgHeight + 10 > 287) {
+          doc.addPage();
+          y = 15;
+        }
+        doc.addImage(imgDataMini, 'PNG', margin, y, imgWidth, imgHeight);
+        y += imgHeight + 8;
+      } catch (e) {
+        console.error('Mini map to PDF error:', e);
+      }
+    }
+
+    // 3. Zapis PDF
+    doc.save(`sonde_${s.id}_report.pdf`);
+
+    // 4. Przywrócenie poprzedniego widoku (jeśli był telemetry)
+    if (viewTelemetry && viewCharts && !chartsWasShown) {
+      viewCharts.classList.remove('show');
+      viewTelemetry.classList.add('show');
+      renderCharts();
     }
   }
-
-  // 3. Zapis PDF
-  doc.save(`sonde_${s.id}_report.pdf`);
-
-  // 4. Przywrócenie poprzedniego widoku (jeśli był telemetry)
-  if (viewTelemetry && viewCharts && !chartsWasShown) {
-    viewCharts.classList.remove('show');
-    viewTelemetry.classList.add('show');
-    renderCharts();
-  }
-}
 
   // ======= Boot =======
   window.addEventListener('DOMContentLoaded', () => {
