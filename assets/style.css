@@ -639,25 +639,20 @@ body {
   color: #8a94b0;
 }
 
+/* --- Skew-T log-P --- */
 
-/* --- Skew-T Log-P --- */
-
-.skewt-body {
-  padding: 6px 8px 8px;
-  min-height: 380px;
+.skewt-card .card-body {
+  min-height: 420px;          /* wygodna wysokość, żeby profil był czytelny */
 }
 
-#chart-skewt {
+.skewt-card canvas#chart-skewt {
   width: 100%;
   height: 100%;
   display: block;
-  border-radius: 12px;
-  background: #050814;
 }
 
-
-/* --- Poprawka odstępu dla górnych etykiet wysokości --- */
-
-.card canvas {
-  margin-top: 8px; /* przesuwa kolorowe prostokąty wyżej */
+/* karta CAPE/CIN – szeroka, osobna na dole */
+.cape-cin-card {
+  grid-column: span 2;
+  margin-top: 12px;
 }
