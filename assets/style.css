@@ -580,3 +580,84 @@ body {
 .stability--stable .class-label {
   color: #3dd4ff;
 }
+/* --- Karta CAPE / CIN --- */
+
+.cape-cin-card .card-body {
+  padding-top: 6px;
+}
+
+.cape-cin-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.cape-cin-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.cape-cin-block {
+  flex: 0 0 150px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #151a28;
+  border: 1px solid rgba(61, 212, 255, 0.25);
+}
+
+.cape-cin-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #8a94b0;
+}
+
+.cape-cin-value {
+  font-size: 18px;
+  margin-top: 4px;
+}
+
+.cape-cin-level {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #c5d0ff;
+}
+
+.cape-cin-extra {
+  font-size: 12px;
+  color: #a0a9c8;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cape-cin-note {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #8a94b0;
+}
+
+
+/* --- Skew-T Log-P --- */
+
+.skewt-body {
+  padding: 6px 8px 8px;
+  min-height: 380px;
+}
+
+#chart-skewt {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 12px;
+  background: #050814;
+}
+
+
+/* --- Poprawka odstępu dla górnych etykiet wysokości --- */
+
+.card canvas {
+  margin-top: 8px; /* przesuwa kolorowe prostokąty wyżej */
+}
