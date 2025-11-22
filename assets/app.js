@@ -1659,19 +1659,20 @@
     const chartsView = document.getElementById('view-charts');
     if (!chartsView) return;
 
-    // Szukamy (albo tworzymy) dedykowaną kartę na samym dole siatki wykresów
+    // Upewniamy się, że karta jest w tej samej siatce, co wykresy (charts-scroll),
+    // żeby przewijała się razem z nimi.
     let card = document.getElementById('cape-cin-card');
     if (!card) {
-      const grid = chartsView.querySelector('.charts-grid') || chartsView;
+      const grid = chartsView.querySelector('.charts-scroll') || chartsView;
       card = document.createElement('div');
       card.id = 'cape-cin-card';
-      card.className = 'card chart-card cape-cin-card';
+      card.className = 'card wide cape-cin-card';
       grid.appendChild(card);
     }
 
     if (!s) {
       card.innerHTML = `
-        <div class="card-header">Energia konwekcji (CAPE / CIN)</div>
+        <div class="card-head">Energia konwekcji (CAPE / CIN)</div>
         <div class="card-body">
           <p>Brak wybranej aktywnej sondy.</p>
         </div>
@@ -1694,7 +1695,7 @@
       else capeLevel = 'bardzo duża';
     }
 
-    // Prosta klasyfikacja siły "czapy" (CIN)
+    // Prosta klasyfikacja siły blokady (CIN)
     let cinLevel = 'brak danych';
     if (Number.isFinite(cin)) {
       const absCin = Math.abs(cin);
@@ -1722,7 +1723,7 @@
     const gammaStr = Number.isFinite(gamma) ? gamma.toFixed(1) + ' K/km' : '—';
 
     card.innerHTML = `
-      <div class="card-header">Energia konwekcji (CAPE / CIN)</div>
+      <div class="card-head">Energia konwekcji (CAPE / CIN)</div>
       <div class="card-body cape-cin-body">
         <div class="cape-cin-main">
           <div class="cape-cin-block">
