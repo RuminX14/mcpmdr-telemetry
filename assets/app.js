@@ -1718,7 +1718,7 @@ async function generatePdfReport() {
   doc.text(`Stability Gamma [K/km]: ${fmt(s.stabilityIndex, 1)}`, 14, y); y += 6;
   doc.text(`Stability class: ${stabAscii}`, 14, y); y += 8;
 
-  // ===== Pomocnicza funkcja: canvas -> obrazek w PDF =====
+   // ===== Pomocnicza funkcja: canvas -> obrazek w PDF z ciemnym tlem =====
   function addChartImageByCanvasId(canvasId, label) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) {
@@ -1726,14 +1726,17 @@ async function generatePdfReport() {
       return;
     }
 
-    // offscreen na bialym tle (zeby nie bylo przezroczystego tła)
+    // offscreen na CIEMNYM tle, jak na stronie
     const tmpCanvas = document.createElement('canvas');
     tmpCanvas.width  = canvas.width;
     tmpCanvas.height = canvas.height;
     const ctx = tmpCanvas.getContext('2d');
 
-    ctx.fillStyle = '#ffffff';
+    // tu ustawiasz kolor tła wykresu w PDF:
+    ctx.fillStyle = '#050922';  // ciemny granat, możesz zmienić np. na #060b20
     ctx.fillRect(0, 0, tmpCanvas.width, tmpCanvas.height);
+
+    // rysujemy wykres z oryginalnego canvasu na to tło
     ctx.drawImage(canvas, 0, 0);
 
     const imgData = tmpCanvas.toDataURL('image/png', 1.0);
