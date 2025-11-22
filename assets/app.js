@@ -1646,12 +1646,12 @@
     `;
   }
 
-// ======= Raport PDF (bez polskich znakow, prostsza wersja, kompatybilna z roznymi jsPDF) =======
+// ======= Raport PDF (bez polskich znakow, z wykresami i minimapa) =======
 async function generatePdfReport() {
-  // próbujemy znaleźć konstruktor jsPDF w różnych wariantach
+  // 1. Znajdz jsPDF w roznych wariantach (bundle / global)
   const jsPdfCtor =
-    (window.jspdf && window.jspdf.jsPDF) || // nowsze bundlowane
-    window.jsPDF ||                          // starsze skrypty globalne
+    (window.jspdf && window.jspdf.jsPDF) ||
+    window.jsPDF ||
     null;
 
   if (!jsPdfCtor || typeof html2canvas === 'undefined') {
@@ -1664,6 +1664,19 @@ async function generatePdfReport() {
   if (!s) {
     alert('No active sonde selected.');
     return;
+  }
+
+  // 2. Na czas generowania PDF wymuszamy widok wykresow
+  const viewTelemetry = document.getElementById('view-telemetry');
+  const viewCharts = document.getElementById('view-charts');
+  const chartsWasShown = viewCharts && viewCharts.classList.contains('show');
+
+  if (viewTelemetry && viewCharts) {
+    viewTelemetry.classList.remove('show');
+    viewCharts.classList.add('show');
+    // upewnij sie ze layout sie przeliczy i wykresy sa narysowane
+    renderCharts();
+    await new Promise(r => setTimeout(r, 80));
   }
 
   const doc = new jsPdfCtor('p', 'mm', 'a4');
@@ -1705,25 +1718,23 @@ async function generatePdfReport() {
   doc.text(`Stability Gamma [K/km]: ${fmt(s.stabilityIndex, 1)}`, 14, y); y += 6;
   doc.text(`Stability class: ${stabAscii}`, 14, y); y += 8;
 
-  // ===== Pomocnicza funkcja: wykres -> obrazek (prosta wersja, bez grzebania w Chart.js) =====
-  function addChartImage(chartId, label) {
-    const chart = state.charts[chartId];
-    if (!chart || !chart.canvas) {
-      console.warn('Chart not found for PDF:', chartId);
+  // ===== Pomocnicza funkcja: canvas -> obrazek w PDF =====
+  function addChartImageByCanvasId(canvasId, label) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) {
+      console.warn('Canvas not found for PDF:', canvasId);
       return;
     }
 
-    const srcCanvas = chart.canvas;
-
-    // offscreen canvas na białym tle
+    // offscreen na bialym tle (zeby nie bylo przezroczystego tła)
     const tmpCanvas = document.createElement('canvas');
-    tmpCanvas.width  = srcCanvas.width;
-    tmpCanvas.height = srcCanvas.height;
+    tmpCanvas.width  = canvas.width;
+    tmpCanvas.height = canvas.height;
     const ctx = tmpCanvas.getContext('2d');
 
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, tmpCanvas.width, tmpCanvas.height);
-    ctx.drawImage(srcCanvas, 0, 0);
+    ctx.drawImage(canvas, 0, 0);
 
     const imgData = tmpCanvas.toDataURL('image/png', 1.0);
 
@@ -1747,12 +1758,12 @@ async function generatePdfReport() {
   }
 
   // ===== Wykresy =====
-  try { addChartImage('chart-volt-temp',   'Temperature vs time'); } catch (e) { console.error(e); }
-  try { addChartImage('chart-hvel',        'Horizontal speed vs time'); } catch (e) { console.error(e); }
-  try { addChartImage('chart-env',         'Environmental data (T, RH, p)'); } catch (e) { console.error(e); }
-  try { addChartImage('chart-wind-profile','Wind profile'); } catch (e) { console.error(e); }
-  try { addChartImage('chart-density',     'Air density vs altitude'); } catch (e) { console.error(e); }
-  try { addChartImage('chart-signal-temp', 'RSSI and supply voltage vs temperature'); } catch (e) { console.error(e); }
+  try { addChartImageByCanvasId('chart-volt-temp',   'Temperature vs time'); } catch (e) { console.error(e); }
+  try { addChartImageByCanvasId('chart-hvel',        'Horizontal speed vs time'); } catch (e) { console.error(e); }
+  try { addChartImageByCanvasId('chart-env',         'Environmental data (T, RH, p)'); } catch (e) { console.error(e); }
+  try { addChartImageByCanvasId('chart-wind-profile','Wind profile'); } catch (e) { console.error(e); }
+  try { addChartImageByCanvasId('chart-density',     'Air density vs altitude'); } catch (e) { console.error(e); }
+  try { addChartImageByCanvasId('chart-signal-temp', 'RSSI and supply voltage vs temperature'); } catch (e) { console.error(e); }
 
   // ===== Mini-mapa – trasa lotu =====
   const miniEl = document.getElementById('mini-map');
@@ -1775,14 +1786,28 @@ async function generatePdfReport() {
       const imgWidth = maxWidth;
       const imgHeight = imgWidth * aspect;
 
+      if (y + imgHeight + 10 > 287) {
+        doc.addPage();
+        y = 15;
+      }
       doc.addImage(imgDataMini, 'PNG', margin, y, imgWidth, imgHeight);
+      y += imgHeight + 8;
     } catch (e) {
       console.error('Mini map to PDF error:', e);
     }
   }
 
+  // 3. Zapis PDF
   doc.save(`sonde_${s.id}_report.pdf`);
+
+  // 4. Przywrócenie poprzedniego widoku (jeśli był telemetry)
+  if (viewTelemetry && viewCharts && !chartsWasShown) {
+    viewCharts.classList.remove('show');
+    viewTelemetry.classList.add('show');
+    renderCharts();
+  }
 }
+
   // ======= Boot =======
   window.addEventListener('DOMContentLoaded', () => {
     initLogin();
