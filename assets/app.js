@@ -1131,7 +1131,12 @@
           },
           plugins: {
             tooltip: tooltipWithAltitude(),
-            legend: { labels: { color: '#e6ebff' } },
+            legend: {
+  labels: { color: '#e6ebff' },
+  padding: 20,          // <-- PODNOSI LEGENDĘ
+  align: 'center',
+},
+
             altitudeTopAxis: {
               enabled: true,
               datasetIndex: 0
