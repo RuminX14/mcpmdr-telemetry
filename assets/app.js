@@ -649,6 +649,8 @@
         status: 'active',
         stabilityIndex: null,
         stabilityClass: null,
+        cape: null,
+        cin: null,
         history: [],
         marker: null,
         polyline: null,
@@ -994,7 +996,7 @@
       if (!opts || !opts.enabled) return;
 
       const datasetIndex = Number.isInteger(opts.datasetIndex) ? opts.datasetIndex : 0;
-      const yOffset = Number.isFinite(opts.yOffsetPx) ? opts.yOffsetPx : 8; // przesunięcie w dół od górnej krawędzi wykresu
+      const yOffset = Number.isFinite(opts.yOffsetPx) ? opts.yOffsetPx : 8;
 
       const ds = chart.data?.datasets?.[datasetIndex];
       const scaleX = chart.scales?.x;
@@ -1011,7 +1013,6 @@
       ctx.textBaseline = 'bottom';
       ctx.fillStyle = '#e6ebff';
 
-      // trochę niżej niż górna krawędź obszaru wykresu, żeby odsunąć się od legendy
       const topY = area.top + yOffset;
 
       for (const tick of scaleX.ticks) {
@@ -1039,11 +1040,192 @@
     }
   };
 
+  // ======= Skew-T Log-P diagram =======
+  function renderSkewT(s) {
+    const canvas = document.getElementById('chart-skewt');
+    if (!canvas) return;
+
+    const parent = canvas.parentElement || canvas;
+    const width = parent.clientWidth || 600;
+    const height = parent.clientHeight || 320;
+    const dpr = window.devicePixelRatio || 1;
+
+    if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+    }
+
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+
+    const left = 48;
+    const right = 20;
+    const top = 18;
+    const bottom = 26;
+    const plotW = width - left - right;
+    const plotH = height - top - bottom;
+
+    // tło
+    ctx.fillStyle = '#050814';
+    ctx.fillRect(0, 0, width, height);
+
+    // ramka
+    ctx.strokeStyle = 'rgba(134,144,176,0.7)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(left, top, plotW, plotH);
+
+    if (!s || !s.history.length) {
+      ctx.fillStyle = '#8a94b0';
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.fillText('Brak danych radiosondy do wykreślenia profilu', left + 12, top + 24);
+      return;
+    }
+
+    // ciśnienie 1000–100 hPa (log-p)
+    const pMin = 100;
+    const pMax = 1000;
+    const logPmin = Math.log(pMin);
+    const logPmax = Math.log(pMax);
+    const yForP = p => {
+      const lp = Math.log(clamp(p, pMin, pMax));
+      const frac = (lp - logPmin) / (logPmax - logPmin);
+      return top + frac * plotH;
+    };
+
+    // temperatura – zakres (°C)
+    const tMin = -60;
+    const tMax = 40;
+    const refLogP = Math.log(1000);
+    const skew = 35; // pochylanie izoterm
+
+    const xForT = (T, p) => {
+      const lp = Math.log(clamp(p, pMin, pMax));
+      const skewedT = T + (lp - refLogP) * skew;
+      const frac = (skewedT - tMin) / (tMax - tMin);
+      return left + frac * plotW;
+    };
+
+    // isobary (poziome linie co 50 hPa)
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillStyle = '#8a94b0';
+    ctx.strokeStyle = 'rgba(134,144,176,0.35)';
+    ctx.lineWidth = 1;
+    for (let p = 1000; p >= 100; p -= 50) {
+      const y = yForP(p);
+      ctx.beginPath();
+      ctx.moveTo(left, y);
+      ctx.lineTo(left + plotW, y);
+      ctx.stroke();
+      ctx.fillText(p.toString(), 6, y + 3);
+    }
+
+    // izotermy (T co 10°C)
+    ctx.setLineDash([4, 4]);
+    for (let T = -60; T <= 40; T += 10) {
+      let firstIso = true;
+      ctx.beginPath();
+      for (let p = 1000; p >= 100; p -= 10) {
+        const x = xForT(T, p);
+        const y = yForP(p);
+        if (firstIso) {
+          ctx.moveTo(x, y);
+          firstIso = false;
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
+
+      const xLabel = xForT(T, 1000);
+      if (xLabel > left && xLabel < left + plotW) {
+        ctx.fillText(T.toString(), xLabel - 8, height - 6);
+      }
+    }
+    ctx.setLineDash([]);
+
+    // Dane: profil T i Td
+    const hist = s.history
+      .filter(h =>
+        Number.isFinite(h.pressure) &&
+        Number.isFinite(h.temp) &&
+        h.pressure >= pMin &&
+        h.pressure <= pMax
+      )
+      .slice()
+      .sort((a, b) => b.pressure - a.pressure); // od dołu do góry atmosfery
+
+    if (!hist.length) {
+      ctx.fillStyle = '#8a94b0';
+      ctx.fillText('Brak punktów z pełnymi danymi T/p', left + 12, top + 24);
+      return;
+    }
+
+    // profil temperatury
+    ctx.strokeStyle = '#ffb86c';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    let firstT = true;
+    for (const h of hist) {
+      const x = xForT(h.temp, h.pressure);
+      const y = yForP(h.pressure);
+      if (firstT) {
+        ctx.moveTo(x, y);
+        firstT = false;
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    ctx.stroke();
+
+    // profil punktu rosy
+    ctx.strokeStyle = '#7bffb0';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    let firstD = true;
+    for (const h of hist) {
+      const Td = dewPoint(h.temp, h.humidity);
+      if (!Number.isFinite(Td)) continue;
+      const x = xForT(Td, h.pressure);
+      const y = yForP(h.pressure);
+      if (firstD) {
+        ctx.moveTo(x, y);
+        firstD = false;
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    ctx.stroke();
+
+    // legenda
+    ctx.fillStyle = '#e6ebff';
+    ctx.font = '11px system-ui, sans-serif';
+    const legendY = top + 12;
+    let lx = left + 8;
+
+    const drawLegend = (color, label) => {
+      ctx.fillStyle = color;
+      ctx.fillRect(lx, legendY - 6, 14, 2);
+      ctx.fillStyle = '#e6ebff';
+      ctx.fillText(label, lx + 20, legendY);
+      lx += ctx.measureText(label).width + 52;
+    };
+
+    drawLegend('#ffb86c', 'T');
+    drawLegend('#7bffb0', 'Td');
+
+    ctx.fillStyle = '#8a94b0';
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillText('Skew-T log-p (T / Td vs p)', left + 8, top + plotH + 18);
+  }
+
   function resizeCharts() {
     Object.values(state.charts).forEach(c => c && c.resize());
     if (state.miniMap) {
       setTimeout(() => state.miniMap.invalidateSize(), 80);
     }
+    const s = state.sondes.get(state.activeId);
+    renderSkewT(s);
   }
 
   function renderMiniMap(s, hist) {
@@ -1236,7 +1418,7 @@
             legend: { labels: { color: '#e6ebff' } },
             altitudeTopAxis: {
               enabled: true,
-              datasetIndex: 0,   // referencja: temperatura
+              datasetIndex: 0,
               yOffsetPx: 8
             }
           }
@@ -1584,10 +1766,12 @@
       chart.update('none');
     })();
 
-    // 7) Wskaźnik stabilności atmosfery – karta z paskiem zamiast wykresu
+    // 7) Wskaźnik stabilności atmosfery – karta z paskiem
     updateStabilityBox(s);
     // 8) Karta CAPE / CIN – pod wykresami
     renderCapeCinCard(s);
+    // 9) Skew-T log-p
+    renderSkewT(s);
   }
 
   // ======= Wskaźnik stabilności – karta z paskiem =======
@@ -1659,8 +1843,6 @@
     const chartsView = document.getElementById('view-charts');
     if (!chartsView) return;
 
-    // Upewniamy się, że karta jest w tej samej siatce, co wykresy (charts-scroll),
-    // żeby przewijała się razem z nimi.
     let card = document.getElementById('cape-cin-card');
     if (!card) {
       const grid = chartsView.querySelector('.charts-scroll') || chartsView;
@@ -1672,7 +1854,7 @@
 
     if (!s) {
       card.innerHTML = `
-        <div class="card-head">Energia konwekcji (CAPE / CIN)</div>
+        <div class="card-header">Energia konwekcji (CAPE / CIN)</div>
         <div class="card-body">
           <p>Brak wybranej aktywnej sondy.</p>
         </div>
@@ -1685,7 +1867,6 @@
     const gamma = s.stabilityIndex;
     const cls = s.stabilityClass || '—';
 
-    // Prosta klasyfikacja wielkości CAPE
     let capeLevel = 'brak danych';
     if (Number.isFinite(cape)) {
       if (cape < 100) capeLevel = 'bardzo mała';
@@ -1695,7 +1876,6 @@
       else capeLevel = 'bardzo duża';
     }
 
-    // Prosta klasyfikacja siły blokady (CIN)
     let cinLevel = 'brak danych';
     if (Number.isFinite(cin)) {
       const absCin = Math.abs(cin);
@@ -1704,7 +1884,6 @@
       else cinLevel = 'silna blokada';
     }
 
-    // Krótki opis słowny potencjału burzowego
     let summary;
     if (!Number.isFinite(cape)) {
       summary = 'Brak pełnych danych do obliczenia CAPE/CIN – wykorzystano jedynie wskaźnik stabilności.';
@@ -1723,7 +1902,9 @@
     const gammaStr = Number.isFinite(gamma) ? gamma.toFixed(1) + ' K/km' : '—';
 
     card.innerHTML = `
-      <div class="card-head">Energia konwekcji (CAPE / CIN)</div>
+      <div class="card-head">
+        <span>Energia konwekcji (CAPE / CIN)</span>
+      </div>
       <div class="card-body cape-cin-body">
         <div class="cape-cin-main">
           <div class="cape-cin-block">
@@ -1755,7 +1936,6 @@
 
   // ======= Raport PDF (bez polskich znakow, z wykresami i minimapa) =======
   async function generatePdfReport() {
-    // 1. Znajdz jsPDF w roznych wariantach (bundle / global)
     const jsPdfCtor =
       (window.jspdf && window.jspdf.jsPDF) ||
       window.jsPDF ||
@@ -1773,7 +1953,6 @@
       return;
     }
 
-    // 2. Na czas generowania PDF wymuszamy widok wykresow
     const viewTelemetry = document.getElementById('view-telemetry');
     const viewCharts = document.getElementById('view-charts');
     const chartsWasShown = viewCharts && viewCharts.classList.contains('show');
@@ -1781,7 +1960,6 @@
     if (viewTelemetry && viewCharts) {
       viewTelemetry.classList.remove('show');
       viewCharts.classList.add('show');
-      // upewnij sie ze layout sie przeliczy i wykresy sa narysowane
       renderCharts();
       await new Promise(r => setTimeout(r, 80));
     }
@@ -1789,7 +1967,6 @@
     const doc = new jsPdfCtor('p', 'mm', 'a4');
     let y = 15;
 
-    // Naglowek (ASCII only)
     doc.setFontSize(16);
     doc.text('Radiosonde telemetry report', 105, y, { align: 'center' });
     y += 10;
@@ -1825,7 +2002,6 @@
     doc.text(`Stability Gamma [K/km]: ${fmt(s.stabilityIndex, 1)}`, 14, y); y += 6;
     doc.text(`Stability class: ${stabAscii}`, 14, y); y += 8;
 
-    // ===== Pomocnicza funkcja: canvas -> obrazek w PDF z ciemnym tlem =====
     function addChartImageByCanvasId(canvasId, label) {
       const canvas = document.getElementById(canvasId);
       if (!canvas) {
@@ -1833,17 +2009,14 @@
         return;
       }
 
-      // offscreen na CIEMNYM tle, jak na stronie
       const tmpCanvas = document.createElement('canvas');
       tmpCanvas.width  = canvas.width;
       tmpCanvas.height = canvas.height;
       const ctx = tmpCanvas.getContext('2d');
 
-      // kolor tła wykresu w PDF:
-      ctx.fillStyle = '#050922';  // ciemny granat
+      ctx.fillStyle = '#050922';
       ctx.fillRect(0, 0, tmpCanvas.width, tmpCanvas.height);
 
-      // rysujemy wykres z oryginalnego canvasu na to tło
       ctx.drawImage(canvas, 0, 0);
 
       const imgData = tmpCanvas.toDataURL('image/png', 1.0);
@@ -1867,7 +2040,6 @@
       y += imgHeight + 8;
     }
 
-    // ===== Wykresy =====
     try { addChartImageByCanvasId('chart-volt-temp',   'Temperature vs time'); } catch (e) { console.error(e); }
     try { addChartImageByCanvasId('chart-hvel',        'Horizontal speed vs time'); } catch (e) { console.error(e); }
     try { addChartImageByCanvasId('chart-env',         'Environmental data (T, RH, p)'); } catch (e) { console.error(e); }
@@ -1875,7 +2047,6 @@
     try { addChartImageByCanvasId('chart-density',     'Air density vs altitude'); } catch (e) { console.error(e); }
     try { addChartImageByCanvasId('chart-signal-temp', 'RSSI and supply voltage vs temperature'); } catch (e) { console.error(e); }
 
-    // ===== Mini-mapa – trasa lotu =====
     const miniEl = document.getElementById('mini-map');
     if (miniEl) {
       if (y + 70 > 287) {
@@ -1907,10 +2078,8 @@
       }
     }
 
-    // 3. Zapis PDF
     doc.save(`sonde_${s.id}_report.pdf`);
 
-    // 4. Przywrócenie poprzedniego widoku (jeśli był telemetry)
     if (viewTelemetry && viewCharts && !chartsWasShown) {
       viewCharts.classList.remove('show');
       viewTelemetry.classList.add('show');
