@@ -23,8 +23,16 @@
     miniMap: null,
     miniPolyline: null,
     miniMarker: null,
-    // tryb renderowania Skew-T (na przyszłość pod przełącznik w UI)
-    skewTMode: 'TTd'
+    // warstwy na wykresie Skew-T (sterowane przełącznikami)
+    skewtLayers: {
+      T: true,
+      Td: true,
+      dryAdiabat: false,
+      mixingRatio: false,
+      lcl: true,
+      freezing: true,
+      wind: false
+    }
   };
 
   // ======= i18n =======
@@ -360,6 +368,22 @@
         generatePdfReport();
       });
     }
+
+    // Przełączniki warstw Skew-T (jeśli są w HTML)
+    $$('.skewt-toggle').forEach(input => {
+      const layer = input.dataset.layer;
+      if (!layer) return;
+      if (layer in state.skewtLayers) {
+        input.checked = !!state.skewtLayers[layer];
+      } else {
+        state.skewtLayers[layer] = !!input.checked;
+      }
+      input.addEventListener('change', () => {
+        state.skewtLayers[layer] = input.checked;
+        const s = state.sondes.get(state.activeId);
+        renderSkewT(s);
+      });
+    });
 
     // Początkowy widok
     $('#view-telemetry').classList.add('show');
@@ -1042,24 +1066,12 @@
     }
   };
 
-  // ======= Przełączanie trybu Skew-T (pod przyciski w index.html) =======
-  function setSkewTMode(mode) {
-    // tutaj w przyszłości można dodać więcej trybów, np. ['TTd', 'Theta', 'RH']
-    const allowed = ['TTd'];
-    if (!allowed.includes(mode)) {
-      mode = 'TTd';
-    }
-    state.skewTMode = mode;
-    const s = state.sondes.get(state.activeId);
-    renderSkewT(s);
-  }
-  // udostępniam globalnie, żeby HTML mógł wołać np. window.setSkewTMode('TTd')
-  window.setSkewTMode = setSkewTMode;
-
   // ======= Skew-T Log-P diagram =======
   function renderSkewT(s) {
     const canvas = document.getElementById('chart-skewt');
     if (!canvas) return;
+
+    const layers = state.skewtLayers || {};
 
     const parent = canvas.parentElement || canvas;
     const width = parent.clientWidth || 600;
@@ -1075,10 +1087,10 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    const left = 48;
-    const right = 20;
+    const left = 52;
+    const right = 32;
     const top = 18;
-    const bottom = 26;
+    const bottom = 30;
     const plotW = width - left - right;
     const plotH = height - top - bottom;
 
@@ -1098,9 +1110,6 @@
       return;
     }
 
-    // aktualny tryb (na razie tylko 'TTd', ale już trzymany w stanie)
-    const mode = state.skewTMode || 'TTd';
-
     // ciśnienie 1000–100 hPa (log-p)
     const pMin = 100;
     const pMax = 1000;
@@ -1112,7 +1121,7 @@
       return top + frac * plotH;
     };
 
-    // temperatura – zakres (°C)
+    // temperatura – zakres (°C) – szeroki zakres, morsko-burzowy
     const tMin = -60;
     const tMax = 40;
     const refLogP = Math.log(1000);
@@ -1125,11 +1134,14 @@
       return left + frac * plotW;
     };
 
-    // isobary (poziome linie co 50 hPa)
+    // ============ SIATKA ============
+
     ctx.font = '10px system-ui, sans-serif';
     ctx.fillStyle = '#8a94b0';
     ctx.strokeStyle = 'rgba(134,144,176,0.35)';
     ctx.lineWidth = 1;
+
+    // isobary (poziome linie co 50 hPa)
     for (let p = 1000; p >= 100; p -= 50) {
       const y = yForP(p);
       ctx.beginPath();
@@ -1163,7 +1175,8 @@
     }
     ctx.setLineDash([]);
 
-    // Dane: profil T i Td
+    // ============ Dane: profil T i Td ============
+
     const hist = s.history
       .filter(h =>
         Number.isFinite(h.pressure) &&
@@ -1181,40 +1194,259 @@
     }
 
     // profil temperatury
-    ctx.strokeStyle = '#ffb86c';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    let firstT = true;
-    for (const h of hist) {
-      const x = xForT(h.temp, h.pressure);
-      const y = yForP(h.pressure);
-      if (firstT) {
-        ctx.moveTo(x, y);
-        firstT = false;
-      } else {
-        ctx.lineTo(x, y);
+    if (layers.T !== false) {
+      ctx.strokeStyle = '#ffb86c';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      let firstT = true;
+      for (const h of hist) {
+        const x = xForT(h.temp, h.pressure);
+        const y = yForP(h.pressure);
+        if (firstT) {
+          ctx.moveTo(x, y);
+          firstT = false;
+        } else {
+          ctx.lineTo(x, y);
+        }
       }
+      ctx.stroke();
     }
-    ctx.stroke();
 
     // profil punktu rosy
-    ctx.strokeStyle = '#7bffb0';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    let firstD = true;
-    for (const h of hist) {
-      const Td = dewPoint(h.temp, h.humidity);
-      if (!Number.isFinite(Td)) continue;
-      const x = xForT(Td, h.pressure);
-      const y = yForP(h.pressure);
-      if (firstD) {
-        ctx.moveTo(x, y);
-        firstD = false;
-      } else {
-        ctx.lineTo(x, y);
+    if (layers.Td !== false) {
+      ctx.strokeStyle = '#7bffb0';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      let firstD = true;
+      for (const h of hist) {
+        const Td = dewPoint(h.temp, h.humidity);
+        if (!Number.isFinite(Td)) continue;
+        const x = xForT(Td, h.pressure);
+        const y = yForP(h.pressure);
+        if (firstD) {
+          ctx.moveTo(x, y);
+          firstD = false;
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
+    }
+
+    // ============ Suche adiabaty (przybliżone, siatka) ============
+    if (layers.dryAdiabat) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,184,108,0.45)';
+      ctx.lineWidth = 0.8;
+      ctx.setLineDash([6, 4]);
+
+      // potencjalna temperatura Θ w [K]
+      for (let theta = 280; theta <= 360; theta += 10) {
+        let first = true;
+        ctx.beginPath();
+        for (let p = 1000; p >= 100; p -= 10) {
+          const Tk = theta / Math.pow(1000 / p, 0.2854);
+          const T = Tk - 273.15;
+          const x = xForT(T, p);
+          const y = yForP(p);
+          if (first) {
+            ctx.moveTo(x, y);
+            first = false;
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
+    // ============ Linie stałego stosunku zmieszania (mieszanie) ============
+    if (layers.mixingRatio) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(123,255,176,0.35)';
+      ctx.lineWidth = 0.8;
+      ctx.setLineDash([2, 4]);
+
+      // UWAGA: to jest przybliżenie – rysujemy zgrubne linie "mieszania"
+      const wValues = [2, 4, 8, 12, 16]; // g/kg
+      for (const w of wValues) {
+        let first = true;
+        ctx.beginPath();
+        for (let p = 1000; p >= 400; p -= 10) {
+          // pseudo: Td zależne od p i w – uproszczone "na oko"
+          const Td = 5 + 8 * Math.log(w) - 0.005 * (p - 1000);
+          const x = xForT(Td, p);
+          const y = yForP(p);
+          if (first) {
+            ctx.moveTo(x, y);
+            first = false;
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
+    // ============ LCL – punkt kondensacji (z profilu sondy) ============
+    if (layers.lcl && Number.isFinite(s.lclHeight)) {
+      const targetZ = s.lclHeight;
+      let best = null;
+      let bestDz = Infinity;
+      for (const h of hist) {
+        if (!Number.isFinite(h.alt)) continue;
+        const dz = Math.abs(h.alt - targetZ);
+        if (dz < bestDz) {
+          bestDz = dz;
+          best = h;
+        }
+      }
+
+      if (best && Number.isFinite(best.pressure) && Number.isFinite(best.temp)) {
+        const pLcl = best.pressure;
+        // wyznacz T na suchoadiabacie startującej z powierzchni
+        const surface = hist[0];
+        let tLcl = best.temp;
+        if (surface && Number.isFinite(surface.temp) && Number.isFinite(surface.pressure)) {
+          const theta = thetaK(surface.temp, surface.pressure); // [K]
+          const TkLcl = theta / Math.pow(1000 / pLcl, 0.2854);
+          tLcl = TkLcl - 273.15;
+        }
+        const xLcl = xForT(tLcl, pLcl);
+        const yLcl = yForP(pLcl);
+
+        ctx.save();
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1;
+
+        ctx.beginPath();
+        ctx.arc(xLcl, yLcl, 4, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.font = '10px system-ui, sans-serif';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText('LCL', xLcl + 6, yLcl - 2);
+        ctx.restore();
       }
     }
-    ctx.stroke();
+
+    // ============ Poziom 0°C (izoterma) =============
+    if (layers.freezing) {
+      // 0°C izoterma już istnieje jako jedna z izoterm – podkreślamy ją
+      ctx.save();
+      ctx.strokeStyle = '#3dd4ff';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([2, 2]);
+
+      let first = true;
+      ctx.beginPath();
+      for (let p = 1000; p >= 100; p -= 10) {
+        const x = xForT(0, p);
+        const y = yForP(p);
+        if (first) {
+          ctx.moveTo(x, y);
+          first = false;
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
+
+      ctx.font = '10px system-ui, sans-serif';
+      ctx.fillStyle = '#3dd4ff';
+      const x0 = xForT(0, 1000);
+      ctx.fillText('0°C', x0 - 10, top + plotH + 18);
+
+      ctx.restore();
+    }
+
+    // ============ Prosty profil wiatru (wektor) ============
+    if (layers.wind) {
+      ctx.save();
+      ctx.font = '10px system-ui, sans-serif';
+      ctx.fillStyle = '#e6ebff';
+      ctx.strokeStyle = '#e6ebff';
+      ctx.lineWidth = 1;
+
+      const xWind = left + plotW + 4; // tuż przy prawej krawędzi ramki (ale w środku canvasa)
+      const maxLen = 24; // max długość strzałki
+
+      function drawArrow(y, speed, dirDeg) {
+        const spd = clamp(speed || 0, 0, 60); // [m/s]
+        const len = (spd / 60) * maxLen;
+
+        const rad = (270 - dirDeg) * Math.PI / 180; // tak, by kierunek 0° był z południa na północ
+        const x1 = xWind;
+        const y1 = y;
+        const x2 = x1 + len * Math.cos(rad);
+        const y2 = y1 + len * Math.sin(rad);
+
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+
+        // grot strzałki
+        const ang = Math.atan2(y2 - y1, x2 - x1);
+        const a1 = ang + Math.PI * 0.75;
+        const a2 = ang - Math.PI * 0.75;
+        const r = 4;
+        ctx.beginPath();
+        ctx.moveTo(x2, y2);
+        ctx.lineTo(x2 + r * Math.cos(a1), y2 + r * Math.sin(a1));
+        ctx.lineTo(x2 + r * Math.cos(a2), y2 + r * Math.sin(a2));
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // wybieramy kilka poziomów (co ~100 hPa)
+      const levels = [1000, 900, 800, 700, 600, 500, 400, 300, 200];
+      for (const p of levels) {
+        let best = null;
+        let bestDp = Infinity;
+        for (const h of hist) {
+          const dp = Math.abs(h.pressure - p);
+          if (dp < bestDp) {
+            bestDp = dp;
+            best = h;
+          }
+        }
+        if (!best) continue;
+
+        // próbujemy odczytać wiatr: albo z kolumn speed/course, albo z trajektorii
+        let speed = best.windSpeed;
+        let dir = best.windDir;
+
+        if (!Number.isFinite(speed) || !Number.isFinite(dir)) {
+          // z trajektorii – szukamy sąsiedniego punktu w czasie
+          const idx = hist.indexOf(best);
+          if (idx > 0) {
+            const a = hist[idx - 1];
+            const b = best;
+            const dt = (b.time - a.time) / 1000;
+            if (dt > 0 &&
+              Number.isFinite(a.lat) && Number.isFinite(a.lon) &&
+              Number.isFinite(b.lat) && Number.isFinite(b.lon)) {
+              const dH = haversine(a.lat, a.lon, b.lat, b.lon);
+              speed = dH / dt;
+              dir = bearing(a.lat, a.lon, b.lat, b.lon);
+            }
+          }
+        }
+
+        if (!Number.isFinite(speed) || !Number.isFinite(dir)) continue;
+
+        const y = yForP(best.pressure);
+        drawArrow(y, speed, dir);
+      }
+
+      ctx.restore();
+    }
 
     // legenda
     ctx.fillStyle = '#e6ebff';
@@ -1230,12 +1462,17 @@
       lx += ctx.measureText(label).width + 52;
     };
 
-    drawLegend('#ffb86c', 'T');
-    drawLegend('#7bffb0', 'Td');
+    if (layers.T !== false) drawLegend('#ffb86c', 'T');
+    if (layers.Td !== false) drawLegend('#7bffb0', 'Td');
+    if (layers.dryAdiabat) drawLegend('rgba(255,184,108,0.7)', 'Suche adiabaty');
+    if (layers.mixingRatio) drawLegend('rgba(123,255,176,0.7)', 'Linie mieszania');
+    if (layers.wind) drawLegend('#e6ebff', 'Wiatr');
+    if (layers.lcl) drawLegend('#ffffff', 'LCL');
+    if (layers.freezing) drawLegend('#3dd4ff', '0°C');
 
     ctx.fillStyle = '#8a94b0';
     ctx.font = '10px system-ui, sans-serif';
-    ctx.fillText(`Skew-T log-p (tryb: ${mode}, T / Td vs p)`, left + 8, top + plotH + 18);
+    ctx.fillText('Skew-T log-p (T / Td vs p)', left + 8, top + plotH + 18);
   }
 
   function resizeCharts() {
