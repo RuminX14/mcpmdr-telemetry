@@ -247,29 +247,75 @@
           <!-- 10. CAPE / CIN (dynamicznie wypełniane przez JS) -->
           <div id="cape-cin-card" class="card wide cape-cin-card"></div>
 
-          <!-- 11. Skew-T Log-P (profil T / Td) -->
+          <!-- 11. Skew-T Log-P (profil T / Td) z przełącznikami warstw -->
           <div class="card wide skewt-card">
             <div class="card-head">
               <span>Skew-T Log-P (profil T / Td)</span>
 
-              <!-- mini-przełącznik trybu Skew-T
-                   Na razie tylko jedna opcja: T / Td.
-                   Wykorzystuje window.setSkewTMode z app.js -->
-              <div class="source-switch">
-                <span
-                  class="seg-btn active"
-                  onclick="if (window.setSkewTMode) window.setSkewTMode('TTd');"
-                >
-                  T / Td
-                </span>
-              </div>
+              <!-- PANEL PRZEŁĄCZNIKÓW DLA 12 FUNKCJI -->
+              <div class="skewt-controls">
+                <div class="skewt-toggle-group">
+                  <!-- podstawowy profil T/Td (zawsze na start włączony) -->
+                  <button
+                    type="button"
+                    class="btn ghost small skewt-toggle active"
+                    data-skew-layer="basic"
+                  >
+                    T / Td
+                  </button>
 
-              <button class="btn icon fullscreen-toggle" title="Pełny ekran">
-                ⤢
-              </button>
+                  <!-- grupy funkcji, żeby nie przeładować wykresu -->
+                  <button
+                    type="button"
+                    class="btn ghost small skewt-toggle active"
+                    data-skew-layer="thermo"
+                  >
+                    Termodyn.
+                  </button>
+
+                  <button
+                    type="button"
+                    class="btn ghost small skewt-toggle active"
+                    data-skew-layer="conv"
+                  >
+                    Konwekcja
+                  </button>
+
+                  <button
+                    type="button"
+                    class="btn ghost small skewt-toggle"
+                    data-skew-layer="wind"
+                  >
+                    Wiatr
+                  </button>
+
+                  <button
+                    type="button"
+                    class="btn ghost small skewt-toggle"
+                    data-skew-layer="marine"
+                  >
+                    Warstwa morska
+                  </button>
+                </div>
+
+                <!-- fullscreen jak wcześniej -->
+                <button class="btn icon fullscreen-toggle" title="Pełny ekran">
+                  ⤢
+                </button>
+              </div>
             </div>
+
             <div class="card-body skewt-body">
               <canvas id="chart-skewt"></canvas>
+
+              <!-- mała legenda co jest pod którą grupą -->
+              <div class="skewt-legend">
+                <div><strong>T / Td:</strong> profil temperatury i punktu rosy.</div>
+                <div><strong>Termodyn.:</strong> suche / wilgotne adiabaty, izolinie θ, linie mieszania.</div>
+                <div><strong>Konwekcja:</strong> LCL / LFC / EL, obszary CAPE / CIN.</div>
+                <div><strong>Wiatr:</strong> pionowy profil wiatru (barbule) przy prawej krawędzi.</div>
+                <div><strong>Warstwa morska:</strong> warstwa przywodna, inwersje i potencjalne poziomy chmur.</div>
+              </div>
             </div>
           </div>
 
