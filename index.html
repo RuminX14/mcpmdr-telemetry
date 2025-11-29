@@ -251,6 +251,19 @@
           <div class="card wide skewt-card">
             <div class="card-head">
               <span>Skew-T Log-P (profil T / Td)</span>
+
+              <!-- mini-przełącznik trybu Skew-T
+                   Na razie tylko jedna opcja: T / Td.
+                   Wykorzystuje window.setSkewTMode z app.js -->
+              <div class="source-switch">
+                <span
+                  class="seg-btn active"
+                  onclick="if (window.setSkewTMode) window.setSkewTMode('TTd');"
+                >
+                  T / Td
+                </span>
+              </div>
+
               <button class="btn icon fullscreen-toggle" title="Pełny ekran">
                 ⤢
               </button>
