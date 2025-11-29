@@ -22,7 +22,9 @@
     // mini-mapa w zakładce wykresów
     miniMap: null,
     miniPolyline: null,
-    miniMarker: null
+    miniMarker: null,
+    // tryb renderowania Skew-T (na przyszłość pod przełącznik w UI)
+    skewTMode: 'TTd'
   };
 
   // ======= i18n =======
@@ -1040,6 +1042,20 @@
     }
   };
 
+  // ======= Przełączanie trybu Skew-T (pod przyciski w index.html) =======
+  function setSkewTMode(mode) {
+    // tutaj w przyszłości można dodać więcej trybów, np. ['TTd', 'Theta', 'RH']
+    const allowed = ['TTd'];
+    if (!allowed.includes(mode)) {
+      mode = 'TTd';
+    }
+    state.skewTMode = mode;
+    const s = state.sondes.get(state.activeId);
+    renderSkewT(s);
+  }
+  // udostępniam globalnie, żeby HTML mógł wołać np. window.setSkewTMode('TTd')
+  window.setSkewTMode = setSkewTMode;
+
   // ======= Skew-T Log-P diagram =======
   function renderSkewT(s) {
     const canvas = document.getElementById('chart-skewt');
@@ -1081,6 +1097,9 @@
       ctx.fillText('Brak danych radiosondy do wykreślenia profilu', left + 12, top + 24);
       return;
     }
+
+    // aktualny tryb (na razie tylko 'TTd', ale już trzymany w stanie)
+    const mode = state.skewTMode || 'TTd';
 
     // ciśnienie 1000–100 hPa (log-p)
     const pMin = 100;
@@ -1216,7 +1235,7 @@
 
     ctx.fillStyle = '#8a94b0';
     ctx.font = '10px system-ui, sans-serif';
-    ctx.fillText('Skew-T log-p (T / Td vs p)', left + 8, top + plotH + 18);
+    ctx.fillText(`Skew-T log-p (tryb: ${mode}, T / Td vs p)`, left + 8, top + plotH + 18);
   }
 
   function resizeCharts() {
