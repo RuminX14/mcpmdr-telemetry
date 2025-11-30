@@ -23,15 +23,18 @@
     miniMap: null,
     miniPolyline: null,
     miniMarker: null,
-    // warstwy na wykresie Skew-T (sterowane przełącznikami)
+    // warstwy na wykresie Skew-T (sterowane przyciskami w index.html)
+    // basic  -> profil T / Td
+    // thermo -> suche adiabaty + linie mieszania
+    // conv   -> LCL (i w przyszłości CAPE/CIN)
+    // wind   -> profil wiatru przy prawej krawędzi
+    // marine -> poziom 0°C (i w przyszłości warstwa morska)
     skewtLayers: {
-      T: true,
-      Td: true,
-      dryAdiabat: false,
-      mixingRatio: false,
-      lcl: true,
-      freezing: true,
-      wind: false
+      basic: true,
+      thermo: true,
+      conv: true,
+      wind: false,
+      marine: false
     }
   };
 
@@ -264,7 +267,7 @@
       title: 'RX',
       icon: L.divIcon({
         className: 'rx-icon',
-        html: '<div style="width:16px;height:16px;border-radius:50%;background:linear-gradient(180deg,#7bffb0,#3dd4ff);border:2px solid #0b1020"></div>'
+        html: '<div style="width:16px;height:16px;border-radius:50%;background:linear-gradient(180deg,#7bffb0,#3dd4ff);border:2px solid#0b1020"></div>'
       })
     }).addTo(map);
     state.rxMarker.bindTooltip('RX Gdynia Oksywie', {
@@ -369,17 +372,25 @@
       });
     }
 
-    // Przełączniki warstw Skew-T (jeśli są w HTML)
-    $$('.skewt-toggle').forEach(input => {
-      const layer = input.dataset.layer;
+    // Przełączniki warstw Skew-T – dopasowane do przycisków w index.html
+    // <button class="skewt-toggle" data-skew-layer="basic|thermo|conv|wind|marine">
+    $$('.skewt-toggle').forEach(btn => {
+      const layer = btn.dataset.skewLayer;
       if (!layer) return;
-      if (layer in state.skewtLayers) {
-        input.checked = !!state.skewtLayers[layer];
+
+      // Inicjalizacja stanu przycisku na podstawie state.skewtLayers
+      if (!(layer in state.skewtLayers)) {
+        state.skewtLayers[layer] = btn.classList.contains('active');
       } else {
-        state.skewtLayers[layer] = !!input.checked;
+        btn.classList.toggle('active', !!state.skewtLayers[layer]);
       }
-      input.addEventListener('change', () => {
-        state.skewtLayers[layer] = input.checked;
+
+      btn.addEventListener('click', () => {
+        const current = !!state.skewtLayers[layer];
+        const next = !current;
+        state.skewtLayers[layer] = next;
+        btn.classList.toggle('active', next);
+
         const s = state.sondes.get(state.activeId);
         renderSkewT(s);
       });
@@ -1072,6 +1083,11 @@
     if (!canvas) return;
 
     const layers = state.skewtLayers || {};
+    const showBasic = layers.basic !== false;
+    const showThermo = !!layers.thermo;
+    const showConv = !!layers.conv;
+    const showWind = !!layers.wind;
+    const showMarine = !!layers.marine;
 
     const parent = canvas.parentElement || canvas;
     const width = parent.clientWidth || 600;
@@ -1098,12 +1114,11 @@
     ctx.fillStyle = '#050814';
     ctx.fillRect(0, 0, width, height);
 
-    // ramka
-    ctx.strokeStyle = 'rgba(134,144,176,0.7)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(left, top, plotW, plotH);
-
     if (!s || !s.history.length) {
+      ctx.strokeStyle = 'rgba(134,144,176,0.7)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(left, top, plotW, plotH);
+
       ctx.fillStyle = '#8a94b0';
       ctx.font = '12px system-ui, sans-serif';
       ctx.fillText('Brak danych radiosondy do wykreślenia profilu', left + 12, top + 24);
@@ -1121,7 +1136,7 @@
       return top + frac * plotH;
     };
 
-    // temperatura – zakres (°C) – szeroki zakres, morsko-burzowy
+    // temperatura – zakres (°C)
     const tMin = -60;
     const tMax = 40;
     const refLogP = Math.log(1000);
@@ -1134,24 +1149,47 @@
       return left + frac * plotW;
     };
 
-    // ============ SIATKA ============
+    // Dane: profil T i Td
+    const hist = s.history
+      .filter(h =>
+        Number.isFinite(h.pressure) &&
+        Number.isFinite(h.temp) &&
+        h.pressure >= pMin &&
+        h.pressure <= pMax
+      )
+      .slice()
+      .sort((a, b) => b.pressure - a.pressure); // od dołu do góry atmosfery
 
+    if (!hist.length) {
+      ctx.strokeStyle = 'rgba(134,144,176,0.7)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(left, top, plotW, plotH);
+
+      ctx.fillStyle = '#8a94b0';
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.fillText('Brak punktów z pełnymi danymi T/p', left + 12, top + 24);
+      return;
+    }
+
+    // ====== CZĘŚĆ W RAMCE (CLIP), żeby NIC nie wyjeżdżało poza osie ======
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(left, top, plotW, plotH);
+    ctx.clip();
+
+    // --- siatka: isobary (linie), bez napisów ---
     ctx.font = '10px system-ui, sans-serif';
-    ctx.fillStyle = '#8a94b0';
     ctx.strokeStyle = 'rgba(134,144,176,0.35)';
     ctx.lineWidth = 1;
-
-    // isobary (poziome linie co 50 hPa)
     for (let p = 1000; p >= 100; p -= 50) {
       const y = yForP(p);
       ctx.beginPath();
       ctx.moveTo(left, y);
       ctx.lineTo(left + plotW, y);
       ctx.stroke();
-      ctx.fillText(p.toString(), 6, y + 3);
     }
 
-    // izotermy (T co 10°C)
+    // --- izotermy T co 10°C ---
     ctx.setLineDash([4, 4]);
     for (let T = -60; T <= 40; T += 10) {
       let firstIso = true;
@@ -1167,34 +1205,11 @@
         }
       }
       ctx.stroke();
-
-      const xLabel = xForT(T, 1000);
-      if (xLabel > left && xLabel < left + plotW) {
-        ctx.fillText(T.toString(), xLabel - 8, height - 6);
-      }
     }
     ctx.setLineDash([]);
 
-    // ============ Dane: profil T i Td ============
-
-    const hist = s.history
-      .filter(h =>
-        Number.isFinite(h.pressure) &&
-        Number.isFinite(h.temp) &&
-        h.pressure >= pMin &&
-        h.pressure <= pMax
-      )
-      .slice()
-      .sort((a, b) => b.pressure - a.pressure); // od dołu do góry atmosfery
-
-    if (!hist.length) {
-      ctx.fillStyle = '#8a94b0';
-      ctx.fillText('Brak punktów z pełnymi danymi T/p', left + 12, top + 24);
-      return;
-    }
-
-    // profil temperatury
-    if (layers.T !== false) {
+    // --- profil temperatury (basic) ---
+    if (showBasic) {
       ctx.strokeStyle = '#ffb86c';
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -1212,8 +1227,8 @@
       ctx.stroke();
     }
 
-    // profil punktu rosy
-    if (layers.Td !== false) {
+    // --- profil punktu rosy (basic) ---
+    if (showBasic) {
       ctx.strokeStyle = '#7bffb0';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
@@ -1233,14 +1248,13 @@
       ctx.stroke();
     }
 
-    // ============ Suche adiabaty (przybliżone, siatka) ============
-    if (layers.dryAdiabat) {
+    // --- suche adiabaty (thermo) ---
+    if (showThermo) {
       ctx.save();
       ctx.strokeStyle = 'rgba(255,184,108,0.45)';
       ctx.lineWidth = 0.8;
       ctx.setLineDash([6, 4]);
 
-      // potencjalna temperatura Θ w [K]
       for (let theta = 280; theta <= 360; theta += 10) {
         let first = true;
         ctx.beginPath();
@@ -1262,20 +1276,18 @@
       ctx.restore();
     }
 
-    // ============ Linie stałego stosunku zmieszania (mieszanie) ============
-    if (layers.mixingRatio) {
+    // --- linie mieszania (thermo – przybliżone) ---
+    if (showThermo) {
       ctx.save();
       ctx.strokeStyle = 'rgba(123,255,176,0.35)';
       ctx.lineWidth = 0.8;
       ctx.setLineDash([2, 4]);
 
-      // UWAGA: to jest przybliżenie – rysujemy zgrubne linie "mieszania"
       const wValues = [2, 4, 8, 12, 16]; // g/kg
       for (const w of wValues) {
         let first = true;
         ctx.beginPath();
         for (let p = 1000; p >= 400; p -= 10) {
-          // pseudo: Td zależne od p i w – uproszczone "na oko"
           const Td = 5 + 8 * Math.log(w) - 0.005 * (p - 1000);
           const x = xForT(Td, p);
           const y = yForP(p);
@@ -1292,8 +1304,8 @@
       ctx.restore();
     }
 
-    // ============ LCL – punkt kondensacji (z profilu sondy) ============
-    if (layers.lcl && Number.isFinite(s.lclHeight)) {
+    // --- LCL (conv) ---
+    if (showConv && Number.isFinite(s.lclHeight)) {
       const targetZ = s.lclHeight;
       let best = null;
       let bestDz = Infinity;
@@ -1308,11 +1320,10 @@
 
       if (best && Number.isFinite(best.pressure) && Number.isFinite(best.temp)) {
         const pLcl = best.pressure;
-        // wyznacz T na suchoadiabacie startującej z powierzchni
         const surface = hist[0];
         let tLcl = best.temp;
         if (surface && Number.isFinite(surface.temp) && Number.isFinite(surface.pressure)) {
-          const theta = thetaK(surface.temp, surface.pressure); // [K]
+          const theta = thetaK(surface.temp, surface.pressure);
           const TkLcl = theta / Math.pow(1000 / pLcl, 0.2854);
           tLcl = TkLcl - 273.15;
         }
@@ -1335,16 +1346,15 @@
       }
     }
 
-    // ============ Poziom 0°C (izoterma) =============
-    if (layers.freezing) {
-      // 0°C izoterma już istnieje jako jedna z izoterm – podkreślamy ją
+    // --- Poziom 0°C (marine lub conv) ---
+    if (showMarine || showConv) {
       ctx.save();
       ctx.strokeStyle = '#3dd4ff';
       ctx.lineWidth = 2;
       ctx.setLineDash([2, 2]);
 
-      let first = true;
       ctx.beginPath();
+      let first = true;
       for (let p = 1000; p >= 100; p -= 10) {
         const x = xForT(0, p);
         const y = yForP(p);
@@ -1356,31 +1366,51 @@
         }
       }
       ctx.stroke();
-
-      ctx.font = '10px system-ui, sans-serif';
-      ctx.fillStyle = '#3dd4ff';
-      const x0 = xForT(0, 1000);
-      ctx.fillText('0°C', x0 - 10, top + plotH + 18);
-
       ctx.restore();
     }
 
-    // ============ Prosty profil wiatru (wektor) ============
-    if (layers.wind) {
+    // koniec części z clipem
+    ctx.restore();
+
+    // ====== ELEMENTY POZA RAMKĄ (napisy, legenda, profil wiatru) ======
+
+    // ramka
+    ctx.strokeStyle = 'rgba(134,144,176,0.7)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(left, top, plotW, plotH);
+
+    // opisy ciśnienia po lewej
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillStyle = '#8a94b0';
+    for (let p = 1000; p >= 100; p -= 50) {
+      const y = yForP(p);
+      ctx.fillText(p.toString(), 6, y + 3);
+    }
+
+    // opisy temperatury na dole
+    for (let T = -60; T <= 40; T += 10) {
+      const xLabel = xForT(T, 1000);
+      if (xLabel > left && xLabel < left + plotW) {
+        ctx.fillText(T.toString(), xLabel - 8, height - 6);
+      }
+    }
+
+    // prosty profil wiatru przy prawej krawędzi (wind)
+    if (showWind) {
       ctx.save();
       ctx.font = '10px system-ui, sans-serif';
       ctx.fillStyle = '#e6ebff';
       ctx.strokeStyle = '#e6ebff';
       ctx.lineWidth = 1;
 
-      const xWind = left + plotW + 4; // tuż przy prawej krawędzi ramki (ale w środku canvasa)
+      const xWind = left + plotW + 4; // w prawym marginesie
       const maxLen = 24; // max długość strzałki
 
       function drawArrow(y, speed, dirDeg) {
         const spd = clamp(speed || 0, 0, 60); // [m/s]
         const len = (spd / 60) * maxLen;
 
-        const rad = (270 - dirDeg) * Math.PI / 180; // tak, by kierunek 0° był z południa na północ
+        const rad = (270 - dirDeg) * Math.PI / 180;
         const x1 = xWind;
         const y1 = y;
         const x2 = x1 + len * Math.cos(rad);
@@ -1391,7 +1421,6 @@
         ctx.lineTo(x2, y2);
         ctx.stroke();
 
-        // grot strzałki
         const ang = Math.atan2(y2 - y1, x2 - x1);
         const a1 = ang + Math.PI * 0.75;
         const a2 = ang - Math.PI * 0.75;
@@ -1404,7 +1433,6 @@
         ctx.fill();
       }
 
-      // wybieramy kilka poziomów (co ~100 hPa)
       const levels = [1000, 900, 800, 700, 600, 500, 400, 300, 200];
       for (const p of levels) {
         let best = null;
@@ -1418,12 +1446,10 @@
         }
         if (!best) continue;
 
-        // próbujemy odczytać wiatr: albo z kolumn speed/course, albo z trajektorii
         let speed = best.windSpeed;
         let dir = best.windDir;
 
         if (!Number.isFinite(speed) || !Number.isFinite(dir)) {
-          // z trajektorii – szukamy sąsiedniego punktu w czasie
           const idx = hist.indexOf(best);
           if (idx > 0) {
             const a = hist[idx - 1];
@@ -1462,13 +1488,23 @@
       lx += ctx.measureText(label).width + 52;
     };
 
-    if (layers.T !== false) drawLegend('#ffb86c', 'T');
-    if (layers.Td !== false) drawLegend('#7bffb0', 'Td');
-    if (layers.dryAdiabat) drawLegend('rgba(255,184,108,0.7)', 'Suche adiabaty');
-    if (layers.mixingRatio) drawLegend('rgba(123,255,176,0.7)', 'Linie mieszania');
-    if (layers.wind) drawLegend('#e6ebff', 'Wiatr');
-    if (layers.lcl) drawLegend('#ffffff', 'LCL');
-    if (layers.freezing) drawLegend('#3dd4ff', '0°C');
+    if (showBasic) {
+      drawLegend('#ffb86c', 'T');
+      drawLegend('#7bffb0', 'Td');
+    }
+    if (showThermo) {
+      drawLegend('rgba(255,184,108,0.7)', 'Suche adiabaty');
+      drawLegend('rgba(123,255,176,0.7)', 'Linie mieszania');
+    }
+    if (showConv) {
+      drawLegend('#ffffff', 'LCL');
+    }
+    if (showMarine || showConv) {
+      drawLegend('#3dd4ff', '0°C');
+    }
+    if (showWind) {
+      drawLegend('#e6ebff', 'Wiatr');
+    }
 
     ctx.fillStyle = '#8a94b0';
     ctx.font = '10px system-ui, sans-serif';
