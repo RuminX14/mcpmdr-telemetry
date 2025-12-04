@@ -148,6 +148,14 @@
     return null;
   }
 
+  // proste przybliżenie ciśnienia z wysokości (standardowa atmosfera)
+  function approxPressureFromAlt(alt) {
+    if (!Number.isFinite(alt)) return null;
+    const p0 = 1013.25; // hPa
+    const H = 8000;     // m – wysokość skali
+    return p0 * Math.exp(-alt / H);
+  }
+
   // parsowanie pola Description z radiosondy.info
   function parseDescription(desc) {
     if (!desc) return {};
@@ -561,7 +569,7 @@
       if (/^[0-9]+$/.test(tRaw)) {
         const n = parseInt(tRaw, 10);
         tms = (tRaw.length < 11) ? n * 1000 : n;
-      } else if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(tRaw)) {
+      } else if (/^\d{4}-\d{2}-\d2 \d{2}:\d{2}:\d{2}$/.test(tRaw)) {
         const [datePart, timePart] = tRaw.split(' ');
         const [Y, M, D] = datePart.split('-').map(Number);
         const [h, m, s] = timePart.split(':').map(Number);
@@ -978,6 +986,7 @@
   }
 
   // ======= Wykresy =======
+::contentReference[oaicite:1]{index=1}
   function ensureChart(id, builder) {
     if (state.charts[id]) return state.charts[id];
     const ctx = document.getElementById(id);
@@ -1082,13 +1091,6 @@
     const canvas = document.getElementById('chart-skewt');
     if (!canvas) return;
 
-    const layers = state.skewtLayers || {};
-    const showBasic = layers.basic !== false;
-    const showThermo = !!layers.thermo;
-    const showConv = !!layers.conv;
-    const showWind = !!layers.wind;
-    const showMarine = !!layers.marine;
-
     const parent = canvas.parentElement || canvas;
     const width = parent.clientWidth || 600;
     const height = parent.clientHeight || 320;
@@ -1103,10 +1105,10 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    const left = 52;
-    const right = 32;
+    const left = 48;
+    const right = 24;
     const top = 18;
-    const bottom = 30;
+    const bottom = 28;
     const plotW = width - left - right;
     const plotH = height - top - bottom;
 
@@ -1114,18 +1116,18 @@
     ctx.fillStyle = '#050814';
     ctx.fillRect(0, 0, width, height);
 
-    if (!s || !s.history.length) {
+    // jeśli nie ma historii w ogóle – ramka + komunikat
+    if (!s || !s.history || !s.history.length) {
       ctx.strokeStyle = 'rgba(134,144,176,0.7)';
       ctx.lineWidth = 1;
       ctx.strokeRect(left, top, plotW, plotH);
-
       ctx.fillStyle = '#8a94b0';
       ctx.font = '12px system-ui, sans-serif';
       ctx.fillText('Brak danych radiosondy do wykreślenia profilu', left + 12, top + 24);
       return;
     }
 
-    // ciśnienie 1000–100 hPa (log-p)
+    // parametry osi
     const pMin = 100;
     const pMax = 1000;
     const logPmin = Math.log(pMin);
@@ -1136,11 +1138,10 @@
       return top + frac * plotH;
     };
 
-    // temperatura – zakres (°C)
     const tMin = -60;
     const tMax = 40;
     const refLogP = Math.log(1000);
-    const skew = 35; // pochylanie izoterm
+    const skew = 35;
 
     const xForT = (T, p) => {
       const lp = Math.log(clamp(p, pMin, pMax));
@@ -1149,36 +1150,37 @@
       return left + frac * plotW;
     };
 
-    // Dane: profil T i Td
+    // historia z dopełnionym ciśnieniem z wysokości (jeśli brak)
     const hist = s.history
+      .map(h => {
+        let p = h.pressure;
+        if (!Number.isFinite(p) && Number.isFinite(h.alt)) {
+          p = approxPressureFromAlt(h.alt);
+        }
+        return { ...h, pressure: p };
+      })
       .filter(h =>
         Number.isFinite(h.pressure) &&
         Number.isFinite(h.temp) &&
         h.pressure >= pMin &&
         h.pressure <= pMax
       )
-      .slice()
       .sort((a, b) => b.pressure - a.pressure); // od dołu do góry atmosfery
 
-    if (!hist.length) {
-      ctx.strokeStyle = 'rgba(134,144,176,0.7)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(left, top, plotW, plotH);
+    // ramka
+    ctx.strokeStyle = 'rgba(134,144,176,0.7)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(left, top, plotW, plotH);
 
-      ctx.fillStyle = '#8a94b0';
-      ctx.font = '12px system-ui, sans-serif';
-      ctx.fillText('Brak punktów z pełnymi danymi T/p', left + 12, top + 24);
-      return;
-    }
-
-    // ====== CZĘŚĆ W RAMCE (CLIP), żeby NIC nie wyjeżdżało poza osie ======
+    // klip – nic nie wyjedzie poza prostokąt
     ctx.save();
     ctx.beginPath();
     ctx.rect(left, top, plotW, plotH);
     ctx.clip();
 
-    // --- siatka: isobary (linie), bez napisów ---
+    // isobary
     ctx.font = '10px system-ui, sans-serif';
+    ctx.fillStyle = '#8a94b0';
     ctx.strokeStyle = 'rgba(134,144,176,0.35)';
     ctx.lineWidth = 1;
     for (let p = 1000; p >= 100; p -= 50) {
@@ -1187,9 +1189,10 @@
       ctx.moveTo(left, y);
       ctx.lineTo(left + plotW, y);
       ctx.stroke();
+      ctx.fillText(p.toString(), 6, y + 3);
     }
 
-    // --- izotermy T co 10°C ---
+    // izotermy
     ctx.setLineDash([4, 4]);
     for (let T = -60; T <= 40; T += 10) {
       let firstIso = true;
@@ -1205,11 +1208,30 @@
         }
       }
       ctx.stroke();
+
+      const xLabel = xForT(T, 1000);
+      if (xLabel > left && xLabel < left + plotW) {
+        ctx.fillStyle = '#8a94b0';
+        ctx.fillText(T.toString(), xLabel - 8, top + plotH + 18);
+      }
     }
     ctx.setLineDash([]);
 
-    // --- profil temperatury (basic) ---
-    if (showBasic) {
+    // jeśli po dopełnieniu ciśnienia nadal nie ma punktów – tylko siatka + komunikat
+    if (!hist.length) {
+      ctx.restore();
+      ctx.fillStyle = '#8a94b0';
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.fillText('Brak punktów z pełnymi danymi T/p', left + 12, top + 24);
+      return;
+    }
+
+    // ---- Warstwy sterowane przełącznikami ----
+    const layers = state.skewtLayers || {};
+
+    // 1) profil T / Td
+    if (layers.basic !== false) {
+      // T
       ctx.strokeStyle = '#ffb86c';
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -1225,10 +1247,8 @@
         }
       }
       ctx.stroke();
-    }
 
-    // --- profil punktu rosy (basic) ---
-    if (showBasic) {
+      // Td
       ctx.strokeStyle = '#7bffb0';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
@@ -1248,19 +1268,20 @@
       ctx.stroke();
     }
 
-    // --- suche adiabaty (thermo) ---
-    if (showThermo) {
-      ctx.save();
-      ctx.strokeStyle = 'rgba(255,184,108,0.45)';
-      ctx.lineWidth = 0.8;
-      ctx.setLineDash([6, 4]);
-
-      for (let theta = 280; theta <= 360; theta += 10) {
+    // 2) Termodynamika – suche adiabat i proste linie mieszania
+    if (layers.thermo) {
+      // suche adiabat – przykładowe temperatury przy 1000 hPa
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 4]);
+      for (let T0 = -40; T0 <= 40; T0 += 10) {
         let first = true;
         ctx.beginPath();
         for (let p = 1000; p >= 100; p -= 10) {
-          const Tk = theta / Math.pow(1000 / p, 0.2854);
-          const T = Tk - 273.15;
+          // przybliżona sucha adiabata: spadek ok. 9.8 K/km
+          // nie liczymy dokładnie – ma być orientacyjna geometra
+          const z = (Math.log(1000 / p) / Math.log(1000 / 900)) * 1000; // pseudo-wysokość
+          const T = T0 - 0.0098 * z;
           const x = xForT(T, p);
           const y = yForP(p);
           if (first) {
@@ -1272,24 +1293,18 @@
         }
         ctx.stroke();
       }
+      ctx.setLineDash([]);
 
-      ctx.restore();
-    }
-
-    // --- linie mieszania (thermo – przybliżone) ---
-    if (showThermo) {
-      ctx.save();
-      ctx.strokeStyle = 'rgba(123,255,176,0.35)';
-      ctx.lineWidth = 0.8;
-      ctx.setLineDash([2, 4]);
-
-      const wValues = [2, 4, 8, 12, 16]; // g/kg
-      for (const w of wValues) {
+      // linie mieszania (przybliżone) – kilka startowych punktów Td przy 1000 hPa
+      ctx.strokeStyle = 'rgba(123,255,176,0.3)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([6, 4]);
+      for (let Td0 = -20; Td0 <= 20; Td0 += 10) {
         let first = true;
         ctx.beginPath();
         for (let p = 1000; p >= 400; p -= 10) {
-          const Td = 5 + 8 * Math.log(w) - 0.005 * (p - 1000);
-          const x = xForT(Td, p);
+          // przybliżona linia mieszania, rosnąca wilgotność z wysokością
+          const x = xForT(Td0 + 0.001 * (1000 - p), p);
           const y = yForP(p);
           if (first) {
             ctx.moveTo(x, y);
@@ -1300,181 +1315,118 @@
         }
         ctx.stroke();
       }
-
-      ctx.restore();
+      ctx.setLineDash([]);
     }
 
-    // --- LCL (conv) ---
-    if (showConv && Number.isFinite(s.lclHeight)) {
-      const targetZ = s.lclHeight;
-      let best = null;
-      let bestDz = Infinity;
-      for (const h of hist) {
-        if (!Number.isFinite(h.alt)) continue;
-        const dz = Math.abs(h.alt - targetZ);
-        if (dz < bestDz) {
-          bestDz = dz;
-          best = h;
-        }
-      }
+    // 3) Konwekcja – poziom LCL oraz prosta linia parceli z powierzchni
+    if (layers.conv) {
+      const surface = hist[hist.length - 1]; // największe p ~ najniżej
+      if (surface && Number.isFinite(surface.temp) && Number.isFinite(surface.humidity)) {
+        const TdSurf = dewPoint(surface.temp, surface.humidity);
+        if (Number.isFinite(TdSurf)) {
+          const zLcl = lclHeight(surface.temp, TdSurf);
+          if (Number.isFinite(zLcl)) {
+            const pLcl = approxPressureFromAlt(zLcl);
+            if (Number.isFinite(pLcl)) {
+              // liniowa parcela: od punktu powierzchni do LCL
+              ctx.strokeStyle = '#ff5470';
+              ctx.lineWidth = 2;
+              ctx.setLineDash([4, 3]);
+              ctx.beginPath();
+              const x0 = xForT(surface.temp, surface.pressure || 1000);
+              const y0 = yForP(surface.pressure || 1000);
+              const x1 = xForT(TdSurf, pLcl);
+              const y1 = yForP(pLcl);
+              ctx.moveTo(x0, y0);
+              ctx.lineTo(x1, y1);
+              ctx.stroke();
+              ctx.setLineDash([]);
 
-      if (best && Number.isFinite(best.pressure) && Number.isFinite(best.temp)) {
-        const pLcl = best.pressure;
-        const surface = hist[0];
-        let tLcl = best.temp;
-        if (surface && Number.isFinite(surface.temp) && Number.isFinite(surface.pressure)) {
-          const theta = thetaK(surface.temp, surface.pressure);
-          const TkLcl = theta / Math.pow(1000 / pLcl, 0.2854);
-          tLcl = TkLcl - 273.15;
-        }
-        const xLcl = xForT(tLcl, pLcl);
-        const yLcl = yForP(pLcl);
-
-        ctx.save();
-        ctx.fillStyle = '#ffffff';
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1;
-
-        ctx.beginPath();
-        ctx.arc(xLcl, yLcl, 4, 0, Math.PI * 2);
-        ctx.stroke();
-
-        ctx.font = '10px system-ui, sans-serif';
-        ctx.textBaseline = 'bottom';
-        ctx.fillText('LCL', xLcl + 6, yLcl - 2);
-        ctx.restore();
-      }
-    }
-
-    // --- Poziom 0°C (marine lub conv) ---
-    if (showMarine || showConv) {
-      ctx.save();
-      ctx.strokeStyle = '#3dd4ff';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([2, 2]);
-
-      ctx.beginPath();
-      let first = true;
-      for (let p = 1000; p >= 100; p -= 10) {
-        const x = xForT(0, p);
-        const y = yForP(p);
-        if (first) {
-          ctx.moveTo(x, y);
-          first = false;
-        } else {
-          ctx.lineTo(x, y);
-        }
-      }
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // koniec części z clipem
-    ctx.restore();
-
-    // ====== ELEMENTY POZA RAMKĄ (napisy, legenda, profil wiatru) ======
-
-    // ramka
-    ctx.strokeStyle = 'rgba(134,144,176,0.7)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(left, top, plotW, plotH);
-
-    // opisy ciśnienia po lewej
-    ctx.font = '10px system-ui, sans-serif';
-    ctx.fillStyle = '#8a94b0';
-    for (let p = 1000; p >= 100; p -= 50) {
-      const y = yForP(p);
-      ctx.fillText(p.toString(), 6, y + 3);
-    }
-
-    // opisy temperatury na dole
-    for (let T = -60; T <= 40; T += 10) {
-      const xLabel = xForT(T, 1000);
-      if (xLabel > left && xLabel < left + plotW) {
-        ctx.fillText(T.toString(), xLabel - 8, height - 6);
-      }
-    }
-
-    // prosty profil wiatru przy prawej krawędzi (wind)
-    if (showWind) {
-      ctx.save();
-      ctx.font = '10px system-ui, sans-serif';
-      ctx.fillStyle = '#e6ebff';
-      ctx.strokeStyle = '#e6ebff';
-      ctx.lineWidth = 1;
-
-      const xWind = left + plotW + 4; // w prawym marginesie
-      const maxLen = 24; // max długość strzałki
-
-      function drawArrow(y, speed, dirDeg) {
-        const spd = clamp(speed || 0, 0, 60); // [m/s]
-        const len = (spd / 60) * maxLen;
-
-        const rad = (270 - dirDeg) * Math.PI / 180;
-        const x1 = xWind;
-        const y1 = y;
-        const x2 = x1 + len * Math.cos(rad);
-        const y2 = y1 + len * Math.sin(rad);
-
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
-
-        const ang = Math.atan2(y2 - y1, x2 - x1);
-        const a1 = ang + Math.PI * 0.75;
-        const a2 = ang - Math.PI * 0.75;
-        const r = 4;
-        ctx.beginPath();
-        ctx.moveTo(x2, y2);
-        ctx.lineTo(x2 + r * Math.cos(a1), y2 + r * Math.sin(a1));
-        ctx.lineTo(x2 + r * Math.cos(a2), y2 + r * Math.sin(a2));
-        ctx.closePath();
-        ctx.fill();
-      }
-
-      const levels = [1000, 900, 800, 700, 600, 500, 400, 300, 200];
-      for (const p of levels) {
-        let best = null;
-        let bestDp = Infinity;
-        for (const h of hist) {
-          const dp = Math.abs(h.pressure - p);
-          if (dp < bestDp) {
-            bestDp = dp;
-            best = h;
-          }
-        }
-        if (!best) continue;
-
-        let speed = best.windSpeed;
-        let dir = best.windDir;
-
-        if (!Number.isFinite(speed) || !Number.isFinite(dir)) {
-          const idx = hist.indexOf(best);
-          if (idx > 0) {
-            const a = hist[idx - 1];
-            const b = best;
-            const dt = (b.time - a.time) / 1000;
-            if (dt > 0 &&
-              Number.isFinite(a.lat) && Number.isFinite(a.lon) &&
-              Number.isFinite(b.lat) && Number.isFinite(b.lon)) {
-              const dH = haversine(a.lat, a.lon, b.lat, b.lon);
-              speed = dH / dt;
-              dir = bearing(a.lat, a.lon, b.lat, b.lon);
+              // znacznik LCL
+              ctx.fillStyle = '#ff5470';
+              ctx.beginPath();
+              ctx.arc(x1, y1, 3, 0, Math.PI * 2);
+              ctx.fill();
             }
           }
         }
-
-        if (!Number.isFinite(speed) || !Number.isFinite(dir)) continue;
-
-        const y = yForP(best.pressure);
-        drawArrow(y, speed, dir);
       }
-
-      ctx.restore();
     }
 
-    // legenda
+    // 4) Wiatr – prosty "profil" po prawej krawędzi (strzałki zgodnie z bearing)
+    if (layers.wind && s.history && s.history.length >= 2) {
+      const ordered = s.history
+        .slice()
+        .sort((a, b) => a.time - b.time)
+        .map(h => {
+          let p = h.pressure;
+          if (!Number.isFinite(p) && Number.isFinite(h.alt)) {
+            p = approxPressureFromAlt(h.alt);
+          }
+          return { ...h, pressure: p };
+        })
+        .filter(h => Number.isFinite(h.pressure) && Number.isFinite(h.lat) && Number.isFinite(h.lon));
+
+      ctx.strokeStyle = '#ffffff';
+      ctx.fillStyle = '#ffffff';
+      ctx.lineWidth = 1;
+
+      for (let i = 1; i < ordered.length; i++) {
+        const a = ordered[i - 1];
+        const b = ordered[i];
+        const dt = (b.time - a.time) / 1000;
+        if (dt <= 0) continue;
+
+        const dH = haversine(a.lat, a.lon, b.lat, b.lon);
+        const v = dH / dt;
+        const dir = bearing(a.lat, a.lon, b.lat, b.lon);
+        if (!Number.isFinite(v) || !Number.isFinite(dir)) continue;
+
+        const pMid = (a.pressure + b.pressure) / 2;
+        const y = yForP(pMid);
+        const x = left + plotW + 10; // trochę na prawo od wykresu, ale nadal w klipie
+        const len = Math.min(18, 4 + v); // długość ~ prędkość
+
+        const ang = (dir - 180) * Math.PI / 180;
+        const x2 = x + len * Math.sin(ang);
+        const y2 = y + len * Math.cos(ang);
+
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+
+        const headLen = 4;
+        const a1 = ang + Math.PI / 6;
+        const a2 = ang - Math.PI / 6;
+        ctx.beginPath();
+        ctx.moveTo(x2, y2);
+        ctx.lineTo(x2 + headLen * Math.sin(a1), y2 + headLen * Math.cos(a1));
+        ctx.lineTo(x2 + headLen * Math.sin(a2), y2 + headLen * Math.cos(a2));
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // 5) Warstwa morska – tylko poziom 0°C jako linia pomocnicza
+    if (layers.marine && Number.isFinite(s.zeroIsoHeight)) {
+      const p0 = approxPressureFromAlt(s.zeroIsoHeight);
+      if (Number.isFinite(p0)) {
+        const y0 = yForP(p0);
+        ctx.strokeStyle = 'rgba(123,255,176,0.9)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 3]);
+        ctx.beginPath();
+        ctx.moveTo(left, y0);
+        ctx.lineTo(left + plotW, y0);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    ctx.restore(); // koniec klipu
+
+    // legenda (poza klipem)
     ctx.fillStyle = '#e6ebff';
     ctx.font = '11px system-ui, sans-serif';
     const legendY = top + 12;
@@ -1488,27 +1440,20 @@
       lx += ctx.measureText(label).width + 52;
     };
 
-    if (showBasic) {
+    if (layers.basic !== false) {
       drawLegend('#ffb86c', 'T');
       drawLegend('#7bffb0', 'Td');
     }
-    if (showThermo) {
-      drawLegend('rgba(255,184,108,0.7)', 'Suche adiabaty');
-      drawLegend('rgba(123,255,176,0.7)', 'Linie mieszania');
+    if (layers.conv) {
+      drawLegend('#ff5470', 'Parcela / LCL');
     }
-    if (showConv) {
-      drawLegend('#ffffff', 'LCL');
-    }
-    if (showMarine || showConv) {
-      drawLegend('#3dd4ff', '0°C');
-    }
-    if (showWind) {
-      drawLegend('#e6ebff', 'Wiatr');
+    if (layers.marine && Number.isFinite(s.zeroIsoHeight)) {
+      drawLegend('rgba(123,255,176,0.9)', '0 °C (przybliżone)');
     }
 
     ctx.fillStyle = '#8a94b0';
     ctx.font = '10px system-ui, sans-serif';
-    ctx.fillText('Skew-T log-p (T / Td vs p)', left + 8, top + plotH + 18);
+    ctx.fillText('Skew-T log-p (T / Td vs p)', left + 8, top + plotH + 20);
   }
 
   function resizeCharts() {
@@ -1628,7 +1573,7 @@
       chart.update('none');
     })();
 
-    // 2) GNSS – liczba satelitów w czasie (placeholder)
+    // 2) GNSS – placeholder
     (function () {
       const id = 'chart-gnss';
       const chart = ensureChart(id, () => ({
@@ -1726,8 +1671,14 @@
         .filter(h => Number.isFinite(h.humidity))
         .map(h => ({ x: h.time.getTime(), y: h.humidity, alt: h.alt }));
       const pData = hist
-        .filter(h => Number.isFinite(h.pressure))
-        .map(h => ({ x: h.time.getTime(), y: h.pressure, alt: h.alt }));
+        .map(h => {
+          let p = h.pressure;
+          if (!Number.isFinite(p) && Number.isFinite(h.alt)) {
+            p = approxPressureFromAlt(h.alt);
+          }
+          return Number.isFinite(p) ? { x: h.time.getTime(), y: p, alt: h.alt } : null;
+        })
+        .filter(Boolean);
 
       chart.data.datasets[0].data = tempData;
       chart.data.datasets[1].data = rhData;
@@ -1983,21 +1934,25 @@
       }));
       if (!chart) return;
 
-      const R = 287; // J/(kg*K)
+      const R = 287;
       const densityData = hist
-        .filter(h => Number.isFinite(h.pressure) && Number.isFinite(h.temp) && Number.isFinite(h.alt))
+        .filter(h => Number.isFinite(h.temp) && Number.isFinite(h.alt))
         .map(h => {
-          const pPa = h.pressure * 100;
+          let p = h.pressure;
+          if (!Number.isFinite(p)) p = approxPressureFromAlt(h.alt);
+          if (!Number.isFinite(p)) return null;
+          const pPa = p * 100;
           const Tk = h.temp + 273.15;
           const rho = pPa / (R * Tk);
           return { x: rho, y: h.alt, alt: h.alt };
-        });
+        })
+        .filter(Boolean);
 
       chart.data.datasets[0].data = densityData;
       chart.update('none');
     })();
 
-    // 6) Moc sygnału i napięcie vs temperatura
+    // 6) RSSI / napięcie vs temperatura
     (function () {
       const id = 'chart-signal-temp';
       const chart = ensureChart(id, () => ({
@@ -2058,7 +2013,7 @@
       chart.update('none');
     })();
 
-    // 7) Wskaźnik stabilności atmosfery – karta z paskiem
+    // 7) Wskaźnik stabilności – karta z paskiem
     updateStabilityBox(s);
     // 8) Karta CAPE / CIN – pod wykresami
     renderCapeCinCard(s);
@@ -2102,7 +2057,7 @@
       return;
     }
 
-    const gamma = s.stabilityIndex;     // K/km
+    const gamma = s.stabilityIndex;
     const cls = s.stabilityClass || '—';
 
     const percent = Math.max(0, Math.min(100, (gamma / 12) * 100));
